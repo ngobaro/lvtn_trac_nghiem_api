@@ -9,5 +9,7 @@ export const databaseConfig = (): TypeOrmModuleOptions => ({
   database: process.env.DB_DATABASE,
   autoLoadEntities: true,
   synchronize: false,
-  ssl: process.env.DB_SSL_CA ? { ca: process.env.DB_SSL_CA } : undefined,
+  ssl: {
+    rejectUnauthorized: true,
+  },
 });
