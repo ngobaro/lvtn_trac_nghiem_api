@@ -23,7 +23,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     done: VerifyCallback,
   ) {
     try {
-      console.log('🔍 Google Profile received:', JSON.stringify(profile, null, 2));
+      console.log('Google Profile received:', JSON.stringify(profile, null, 2));
 
       if (!profile || !profile.emails || !profile.emails.length) {
         return done(new Error('Google profile is missing email'), undefined);
@@ -31,15 +31,15 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 
       const user = {
         email: profile.emails[0].value,
-        tenNguoiDung: profile.displayName || 
-                     (profile.name?.givenName + ' ' + profile.name?.familyName).trim(),
+        tenNguoiDung: profile.displayName ||
+          (profile.name?.givenName + ' ' + profile.name?.familyName).trim(),
         googleId: profile.id,
         avatar: profile.photos?.[0]?.value,
       };
 
       done(null, user);
     } catch (error) {
-      console.error('❌ Google Strategy Error:', error);
+      console.error('Google Strategy Error:', error);
       done(error, undefined);
     }
   }
