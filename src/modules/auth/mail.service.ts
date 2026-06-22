@@ -7,8 +7,8 @@ export class MailService {
     private transporter;
 
     constructor(private configService: ConfigService) {
-        // Log để kiểm tra config (bạn có thể xóa sau khi test thành công)
-        console.log('📧 Mail Service Initialized with:', {
+        // Log để kiểm tra config
+        console.log('Mail Service Initialized with:', {
             user: this.configService.get<string>('MAIL_USER'),
             from: this.configService.get<string>('MAIL_FROM'),
             passExists: !!this.configService.get<string>('MAIL_PASS'),
@@ -40,9 +40,9 @@ export class MailService {
                 `,
             });
 
-            console.log(`✅ OTP đã gửi thành công đến ${email} | MessageId: ${info.messageId}`);
+            console.log(`OTP đã gửi thành công đến ${email} | MessageId: ${info.messageId}`);
         } catch (error: any) {
-            console.error('❌ Gửi email thất bại:', error.message);
+            console.error('Gửi email thất bại:', error.message);
             throw new Error('Không thể gửi email OTP. Vui lòng thử lại sau.');
         }
     }

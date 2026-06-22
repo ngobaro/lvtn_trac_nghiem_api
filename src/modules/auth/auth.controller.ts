@@ -17,12 +17,16 @@ export class AuthController {
 
   @Post('register')
   @ResponseMessage('Đăng ký thành công')
-  register(@Body() dto: RegisterDto) { return this.authService.register(dto); }
+  register(@Body() dto: RegisterDto) { 
+    return this.authService.register(dto); 
+  }
 
   @Post('login')
   @UseGuards(AuthGuard('local'))
   @ResponseMessage('Đăng nhập thành công')
-  login(@Req() req: any) { return this.authService.login(req.user); }
+  login(@Req() req: any) { 
+    return this.authService.login(req.user); 
+  }
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
@@ -43,7 +47,9 @@ export class AuthController {
   @Post('refresh')
   @UseGuards(AuthGuard('jwt-refresh'))
   @ResponseMessage('Cấp lại token thành công')
-  refresh(@Req() req: any) { return this.authService.refreshToken(req.user); }
+  refresh(@Req() req: any) { 
+    return this.authService.refreshToken(req.user); 
+  }
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
@@ -52,11 +58,15 @@ export class AuthController {
 
   @Post('forgot-password')
   @ResponseMessage('Gửi OTP thành công')
-  forgotPassword(@Body() dto: ForgotPasswordDto) { return this.authService.forgotPassword(dto.email); }
+  forgotPassword(@Body() dto: ForgotPasswordDto) { 
+    return this.authService.forgotPassword(dto.email); 
+  }
 
   @Post('verify-otp')
   @ResponseMessage('Xác nhận OTP thành công')
-  verifyOtp(@Body() dto: VerifyOtpDto) { return this.authService.verifyOtp(dto.email, dto.otp); }
+  verifyOtp(@Body() dto: VerifyOtpDto) { 
+    return this.authService.verifyOtp(dto.email, dto.otp); 
+  }
 
   @Post('reset-password')
   @ResponseMessage('Đặt lại mật khẩu thành công')
@@ -74,5 +84,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ResponseMessage('Lấy thông tin thành công')
-  getMe(@CurrentUser() user: any) { return this.authService.getMe(user.maNguoiDung); }
+  getMe(@CurrentUser() user: any) { 
+    return this.authService.getMe(user.maNguoiDung); 
+  }
 }
