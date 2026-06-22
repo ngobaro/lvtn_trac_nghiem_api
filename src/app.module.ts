@@ -6,12 +6,8 @@ import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { databaseConfig } from './config/database.config';
-// import { SubjectsModule } from './modules/subjects/subjects.module';
-// import { QuestionsModule } from './modules/questions/questions.module';
-// import { ExamsModule } from './modules/exams/exams.module';
-// import { ExamRoomsModule } from './modules/exam-rooms/exam-rooms.module';
-// import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
-// import { ResultsModule } from './modules/results/results.module';
+import { SubjectsModule } from './modules/subjects/subjects.module';
+import { QuestionsModule } from './modules/questions/questions.module';
 
 @Module({
   imports: [
@@ -20,12 +16,8 @@ import { databaseConfig } from './config/database.config';
 
     AuthModule,
     UsersModule,
-    // SubjectsModule,
-    // QuestionsModule,
-    // ExamsModule,
-    // ExamRoomsModule,
-    // ExamSessionsModule,
-    // ResultsModule,
+    SubjectsModule,
+    QuestionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
