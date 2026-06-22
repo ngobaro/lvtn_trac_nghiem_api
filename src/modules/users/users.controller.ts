@@ -14,10 +14,19 @@ import { ParseIntPipe } from '../../common/pipes/parse-int.pipe';
 export class UsersController {
   constructor(private usersService: UsersService) {}
 
-  @Get() findAll(@Query() query: QueryUserDto) { return this.usersService.findAll(query); }
-  @Get(':id') findOne(@Param('id', ParseIntPipe) id: number) { return this.usersService.findOne(id); }
+  @Get() findAll(@Query() query: QueryUserDto) { 
+    return this.usersService.findAll(query); 
+  }
+
+  @Get(':id') findOne(@Param('id', ParseIntPipe) id: number) { 
+    return this.usersService.findOne(id); 
+  }
+
   @Patch(':id/status') updateStatus(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserStatusDto) {
     return this.usersService.updateStatus(id, dto.laHoatDong);
   }
-  @Delete(':id') remove(@Param('id', ParseIntPipe) id: number) { return this.usersService.remove(id); }
+
+  @Delete(':id') remove(@Param('id', ParseIntPipe) id: number) { 
+    return this.usersService.remove(id); 
+  }
 }
