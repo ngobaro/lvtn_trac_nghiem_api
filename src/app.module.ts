@@ -8,6 +8,7 @@ import { UsersModule } from './modules/users/users.module';
 import { databaseConfig } from './config/database.config';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { QuestionsModule } from './modules/questions/questions.module';
+import { ExamsModule } from './modules/exams/exams.module';
 
 @Module({
   imports: [
@@ -18,8 +19,9 @@ import { QuestionsModule } from './modules/questions/questions.module';
     UsersModule,
     SubjectsModule,
     QuestionsModule,
+    ExamsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}
