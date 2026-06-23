@@ -1,0 +1,442 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource, In } from 'typeorm';
+import { BaiLam } from './entities/bai-lam.entity';
+import { CauHoiBaiLam } from './entities/cau-hoi-bai-lam.entity';
+import { NguoiDungTraLoi } from './entities/nguoi-dung-tra-loi.entity';
+import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
+import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
+import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
+import { LuaChon } from '../questions/entities/lua-chon.entity';
+import { DapAn } from '../questions/entities/dap-an.entity';
+import { KetQua } from '../results/entities/ket-qua.entity';
+import { JoinRoomDto } from './dto/join-room.dto';
+import { SubmitAnswerDto } from './dto/submit-answer.dto';
+import { TrangThaiBaiLam } from '../../common/enums/trang-thai-bai-lam.enum';
+import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
+import { TrangThaiThanhVien } from '../../common/enums/trang-thai-thanh-vien.enum';
+import { CheDoCauHoi } from '../../common/enums/che-do-cau-hoi.enum';
+import { LoaiCauHoi } from '../../common/enums/loai-cau-hoi.enum';
+
+@Injectable()
+export class ExamSessionsService {
+  private readonly logger = new Logger(ExamSessionsService.name);
+
+  constructor(
+    @InjectRepository(BaiLam) private baiLamRepo: Repository<BaiLam>,
+    @InjectRepository(CauHoiBaiLam)
+    private cauHoiBaiLamRepo: Repository<CauHoiBaiLam>,
+    @InjectRepository(NguoiDungTraLoi)
+    private traLoiRepo: Repository<NguoiDungTraLoi>,
+    @InjectRepository(PhongThi) private phongThiRepo: Repository<PhongThi>,
+    @InjectRepository(ThanhVienPhong)
+    private thanhVienRepo: Repository<ThanhVienPhong>,
+    @InjectRepository(CauHoiBaiThi)
+    private cauHoiBaiThiRepo: Repository<CauHoiBaiThi>,
+    private dataSource: DataSource,
+  ) {}
+
+  // HS nhập mã phòng -> tạo BAI_LAM + bộ CAU_HOI_BAI_LAM (theo cheDoCauHoi)
+  async joinRoom(dto: JoinRoomDto, maNguoiDung: number) {
+    const phong = await this.phongThiRepo.findOne({
+      where: { maThamGiaPhong: dto.maThamGiaPhong },
+    });
+    if (!phong) throw new NotFoundException('Mã tham gia phòng không đúng');
+    if (phong.trangThai !== TrangThaiPhongThi.DANG_DIEN_RA)
+      throw new BadRequestException('Phòng thi chưa mở hoặc đã đóng');
+
+    const now = new Date();
+    if (now > phong.dongLuc)
+      throw new BadRequestException('Phòng thi đã hết thời gian');
+
+    // Đã có bài làm trong phòng này?
+    const baiLamCu = await this.baiLamRepo.findOne({
+      where: { maPhongThi: phong.maPhongThi, maNguoiDung },
+    });
+    if (baiLamCu) {
+      if (baiLamCu.trangThai === TrangThaiBaiLam.DANG_LAM)
+        return this.getSession(baiLamCu.maBaiLam, maNguoiDung); // resume
+      throw new BadRequestException('Bạn đã hoàn thành bài thi này');
+    }
+
+    // Kiểm tra giới hạn số người tham gia
+    if (phong.soNguoiThamGia) {
+      const soThanhVien = await this.thanhVienRepo.countBy({
+        maPhongThi: phong.maPhongThi,
+      });
+      if (soThanhVien >= phong.soNguoiThamGia)
+        throw new BadRequestException(
+          'Phòng thi đã đủ số lượng người tham gia',
+        );
+    }
+
+    // Lấy ngân hàng câu hỏi của đề thi
+    const dsCauHoi = await this.cauHoiBaiThiRepo.find({
+      where: { maBaiThi: phong.maBaiThi },
+      order: { thuTu: 'ASC' },
+    });
+    if (dsCauHoi.length === 0)
+      throw new BadRequestException('Đề thi chưa có câu hỏi');
+
+    const cauHoiHienThi = this.chonCauHoi(dsCauHoi, phong);
+
+    const maBaiLam = await this.dataSource.transaction(async (em) => {
+      const baiLam = await em.save(
+        BaiLam,
+        em.create(BaiLam, {
+          maPhongThi: phong.maPhongThi,
+          maBaiThi: phong.maBaiThi,
+          maNguoiDung,
+          thoiGianBatDau: now,
+          // thoiGianKetThuc = thời điểm nộp thực tế, cập nhật khi nộp bài.
+          // Tạm gán = thời điểm bắt đầu (cột NOT NULL); hạn nộp lấy từ phong.dongLuc.
+          thoiGianKetThuc: now,
+          trangThai: TrangThaiBaiLam.DANG_LAM,
+        }),
+      );
+
+      await Promise.all(
+        cauHoiHienThi.map((ch, i) =>
+          em.save(
+            CauHoiBaiLam,
+            em.create(CauHoiBaiLam, {
+              maBaiLam: baiLam.maBaiLam,
+              maCauHoi: ch.maCauHoi,
+              thuTuHienThi: i + 1,
+            }),
+          ),
+        ),
+      );
+
+      await em.save(
+        ThanhVienPhong,
+        em.create(ThanhVienPhong, {
+          maPhongThi: phong.maPhongThi,
+          maNguoiDung,
+          trangThai: TrangThaiThanhVien.DA_THAM_GIA,
+        }),
+      );
+
+      return baiLam.maBaiLam;
+    });
+
+    return this.getSession(maBaiLam, maNguoiDung);
+  }
+
+  // Thông tin phiên thi + toàn bộ câu hỏi (KHÔNG kèm đáp án đúng)
+  async getSession(maBaiLam: number, maNguoiDung: number) {
+    const baiLam = await this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
+
+    const cauHois = await this.cauHoiBaiLamRepo.find({
+      where: { maBaiLam },
+      relations: { cauHoi: { luaChons: true } },
+      order: { thuTuHienThi: 'ASC' },
+    });
+
+    const daTraLoi = await this.mapDaTraLoi(maBaiLam);
+
+    const daNop = baiLam.trangThai !== TrangThaiBaiLam.DANG_LAM;
+    return {
+      maBaiLam: baiLam.maBaiLam,
+      maPhongThi: baiLam.maPhongThi,
+      maBaiThi: baiLam.maBaiThi,
+      trangThai: baiLam.trangThai,
+      thoiGianBatDau: baiLam.thoiGianBatDau,
+      hanNop: baiLam.phongThi.dongLuc,
+      thoiGianNop: daNop ? baiLam.thoiGianKetThuc : null,
+      thoiGianConLaiGiay: this.thoiGianConLai(baiLam),
+      cauHois: cauHois.map((c) => this.dinhDangCauHoi(c, daTraLoi)),
+    };
+  }
+
+  // Lấy 1 câu hỏi theo thứ tự hiển thị
+  async getQuestion(
+    maBaiLam: number,
+    thuTuHienThi: number,
+    maNguoiDung: number,
+  ) {
+    await this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
+
+    const cauHoi = await this.cauHoiBaiLamRepo.findOne({
+      where: { maBaiLam, thuTuHienThi },
+      relations: { cauHoi: { luaChons: true } },
+    });
+    if (!cauHoi) throw new NotFoundException('Không tìm thấy câu hỏi');
+
+    const daTraLoi = await this.mapDaTraLoi(maBaiLam);
+    return this.dinhDangCauHoi(cauHoi, daTraLoi);
+  }
+
+  // Lưu/đổi/bỏ câu trả lời cho 1 câu hỏi
+  async saveAnswer(
+    maBaiLam: number,
+    dto: SubmitAnswerDto,
+    maNguoiDung: number,
+  ) {
+    const baiLam = await this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
+    if (baiLam.trangThai !== TrangThaiBaiLam.DANG_LAM)
+      throw new BadRequestException('Bài làm đã kết thúc');
+    if (new Date() > baiLam.phongThi.dongLuc)
+      throw new BadRequestException('Đã hết thời gian làm bài');
+
+    // Câu hỏi phải thuộc bộ đề của bài làm
+    const cauHoiBaiLam = await this.cauHoiBaiLamRepo.findOne({
+      where: { maBaiLam, maCauHoi: dto.maCauHoi },
+      relations: { cauHoi: true },
+    });
+    if (!cauHoiBaiLam)
+      throw new BadRequestException('Câu hỏi không thuộc bài làm này');
+
+    const maLuaChons = dto.maLuaChons ?? [];
+    if (
+      cauHoiBaiLam.cauHoi.loaiCauHoi === LoaiCauHoi.MOT_DAP_AN &&
+      maLuaChons.length > 1
+    )
+      throw new BadRequestException('Câu hỏi này chỉ được chọn 1 đáp án');
+
+    // Các lựa chọn phải thuộc đúng câu hỏi
+    if (maLuaChons.length > 0) {
+      const hopLe = await this.dataSource.getRepository(LuaChon).countBy({
+        maLuaChon: In(maLuaChons),
+        maCauHoi: dto.maCauHoi,
+      });
+      if (hopLe !== new Set(maLuaChons).size)
+        throw new BadRequestException('Lựa chọn không hợp lệ');
+    }
+
+    await this.dataSource.transaction(async (em) => {
+      await em.delete(NguoiDungTraLoi, { maBaiLam, maCauHoi: dto.maCauHoi });
+      for (const maLuaChon of maLuaChons) {
+        await em.save(
+          NguoiDungTraLoi,
+          em.create(NguoiDungTraLoi, {
+            maBaiLam,
+            maCauHoi: dto.maCauHoi,
+            maLuaChon,
+          }),
+        );
+      }
+    });
+
+    return { maCauHoi: dto.maCauHoi, maLuaChons };
+  }
+
+  // Nộp bài thủ công -> tính điểm -> lưu KET_QUA
+  async submit(maBaiLam: number, maNguoiDung: number) {
+    const baiLam = await this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
+    if (baiLam.trangThai !== TrangThaiBaiLam.DANG_LAM)
+      throw new BadRequestException('Bài làm đã được nộp');
+
+    const ketQua = await this.finalize(maBaiLam, TrangThaiBaiLam.DA_NOP);
+    if (!ketQua) throw new BadRequestException('Bài làm đã được nộp');
+    return ketQua;
+  }
+
+  // Chốt bài làm một cách atomic: tính điểm, lưu KET_QUA, cập nhật thành viên phòng.
+  // Dùng chung cho nộp tay / WebSocket / cron; chống nộp trùng bằng claim trạng thái.
+  private async finalize(maBaiLam: number, trangThaiMoi: TrangThaiBaiLam) {
+    // Chỉ 1 tiến trình chuyển được DANG_LAM -> trạng thái cuối
+    const claim = await this.baiLamRepo.update(
+      { maBaiLam, trangThai: TrangThaiBaiLam.DANG_LAM },
+      { trangThai: trangThaiMoi, thoiGianKetThuc: new Date() },
+    );
+    if (!claim.affected) return null; // tiến trình khác đã chốt
+
+    const baiLam = await this.baiLamRepo.findOne({ where: { maBaiLam } });
+    if (!baiLam) return null;
+
+    const ketQua = await this.chamDiem(maBaiLam);
+    await this.dataSource.transaction(async (em) => {
+      await em.save(
+        KetQua,
+        em.create(KetQua, {
+          maBaiLam,
+          maNguoiDung: baiLam.maNguoiDung,
+          maBaiThi: baiLam.maBaiThi,
+          diemSo: ketQua.diemSo,
+          tongSoCau: ketQua.tongSoCau,
+          soCauDung: ketQua.soCauDung,
+        }),
+      );
+      await em.update(
+        ThanhVienPhong,
+        { maPhongThi: baiLam.maPhongThi, maNguoiDung: baiLam.maNguoiDung },
+        { trangThai: TrangThaiThanhVien.DA_NOP_BAI },
+      );
+    });
+    return ketQua;
+  }
+
+  // ----- Dùng cho WebSocket gateway -----
+
+  // Xác thực quyền truy cập phiên thi (ném lỗi nếu không sở hữu / không tồn tại)
+  async xacThucPhien(maBaiLam: number, maNguoiDung: number) {
+    return this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
+  }
+
+  // Lấy số giây còn lại + trạng thái bài làm (không kiểm tra sở hữu, dùng cho tick)
+  async trangThaiThoiGian(
+    maBaiLam: number,
+  ): Promise<{ conLaiGiay: number; trangThai: TrangThaiBaiLam } | null> {
+    const baiLam = await this.baiLamRepo.findOne({
+      where: { maBaiLam },
+      relations: { phongThi: true },
+    });
+    if (!baiLam) return null;
+    return {
+      conLaiGiay: this.thoiGianConLai(baiLam),
+      trangThai: baiLam.trangThai,
+    };
+  }
+
+  // Tự động nộp bài khi hết giờ (trạng thái HET_THOI_GIAN). Bỏ qua nếu đã nộp.
+  async autoSubmit(maBaiLam: number) {
+    return this.finalize(maBaiLam, TrangThaiBaiLam.HET_THOI_GIAN);
+  }
+
+  // Cron mỗi phút: chốt mọi bài làm còn DANG_LAM mà phòng đã quá hạn (dongLuc).
+  // Đảm bảo HS đã vào thi luôn có kết quả, kể cả khi mất kết nối và không quay lại.
+  @Cron(CronExpression.EVERY_MINUTE)
+  async quetBaiLamHetGio() {
+    const baiLams = await this.baiLamRepo
+      .createQueryBuilder('bl')
+      .innerJoin(PhongThi, 'pt', 'pt.maPhongThi = bl.maPhongThi')
+      .where('bl.trangThai = :tt', { tt: TrangThaiBaiLam.DANG_LAM })
+      .andWhere('pt.dongLuc < :now', { now: new Date() })
+      .select('bl.maBaiLam', 'maBaiLam')
+      .getRawMany<{ maBaiLam: number }>();
+
+    for (const { maBaiLam } of baiLams) {
+      try {
+        await this.autoSubmit(maBaiLam);
+      } catch (e) {
+        this.logger.error(
+          `Tự động nộp bài ${maBaiLam} thất bại: ${(e as Error).message}`,
+        );
+      }
+    }
+  }
+
+  private async layBaiLamCuaToi(maBaiLam: number, maNguoiDung: number) {
+    const baiLam = await this.baiLamRepo.findOne({
+      where: { maBaiLam },
+      relations: { phongThi: true },
+    });
+    if (!baiLam) throw new NotFoundException('Không tìm thấy bài làm');
+    if (baiLam.maNguoiDung !== maNguoiDung)
+      throw new ForbiddenException('Bạn không có quyền truy cập bài làm này');
+    return baiLam;
+  }
+
+  // Chọn câu hỏi hiển thị theo chế độ phòng thi
+  private chonCauHoi(
+    dsCauHoi: CauHoiBaiThi[],
+    phong: PhongThi,
+  ): CauHoiBaiThi[] {
+    if (phong.cheDoCauHoi === CheDoCauHoi.THEO_THU_TU) return dsCauHoi;
+
+    const daXao = this.xaoTron(dsCauHoi);
+    if (phong.cheDoCauHoi === CheDoCauHoi.NGAU_NHIEN && phong.soCauChon)
+      return daXao.slice(0, phong.soCauChon);
+    return daXao;
+  }
+
+  private xaoTron<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Thời gian còn lại tính theo hạn nộp = thời điểm đóng phòng (phong.dongLuc)
+  private thoiGianConLai(baiLam: BaiLam): number {
+    const conLai = Math.floor(
+      (baiLam.phongThi.dongLuc.getTime() - Date.now()) / 1000,
+    );
+    return conLai > 0 ? conLai : 0;
+  }
+
+  // map maCauHoi -> danh sách maLuaChon đã chọn
+  private async mapDaTraLoi(maBaiLam: number): Promise<Map<number, number[]>> {
+    const traLois = await this.traLoiRepo.find({ where: { maBaiLam } });
+    const map = new Map<number, number[]>();
+    for (const tl of traLois) {
+      if (tl.maLuaChon == null) continue;
+      const arr = map.get(tl.maCauHoi) ?? [];
+      arr.push(tl.maLuaChon);
+      map.set(tl.maCauHoi, arr);
+    }
+    return map;
+  }
+
+  private dinhDangCauHoi(c: CauHoiBaiLam, daTraLoi: Map<number, number[]>) {
+    return {
+      thuTuHienThi: c.thuTuHienThi,
+      maCauHoi: c.maCauHoi,
+      noiDung: c.cauHoi.noiDung,
+      hinhAnh: c.cauHoi.hinhAnh,
+      loaiCauHoi: c.cauHoi.loaiCauHoi,
+      luaChons: (c.cauHoi.luaChons ?? []).map((lc) => ({
+        maLuaChon: lc.maLuaChon,
+        noiDung: lc.noiDung,
+      })),
+      daChon: daTraLoi.get(c.maCauHoi) ?? [],
+    };
+  }
+
+  // Tính điểm: 1 câu đúng khi tập lựa chọn đã chọn TRÙNG KHỚP tập đáp án đúng
+  private async chamDiem(maBaiLam: number) {
+    const cauHoiBaiLams = await this.cauHoiBaiLamRepo.find({
+      where: { maBaiLam },
+    });
+    const tongSoCau = cauHoiBaiLams.length;
+    const maCauHois = cauHoiBaiLams.map((c) => c.maCauHoi);
+
+    // Lựa chọn đúng của từng câu hỏi
+    const luaChons = maCauHois.length
+      ? await this.dataSource
+          .getRepository(LuaChon)
+          .findBy({ maCauHoi: In(maCauHois) })
+      : [];
+    const luaChonIds = luaChons.map((lc) => lc.maLuaChon);
+    const dapAns = luaChonIds.length
+      ? await this.dataSource
+          .getRepository(DapAn)
+          .findBy({ maLuaChon: In(luaChonIds) })
+      : [];
+    const dapAnDungIds = new Set(dapAns.map((d) => d.maLuaChon));
+
+    const dapAnDungTheoCau = new Map<number, Set<number>>();
+    for (const lc of luaChons) {
+      if (!dapAnDungIds.has(lc.maLuaChon)) continue;
+      const set = dapAnDungTheoCau.get(lc.maCauHoi) ?? new Set<number>();
+      set.add(lc.maLuaChon);
+      dapAnDungTheoCau.set(lc.maCauHoi, set);
+    }
+
+    const daChonTheoCau = await this.mapDaTraLoi(maBaiLam);
+
+    let soCauDung = 0;
+    for (const maCauHoi of maCauHois) {
+      const dung = dapAnDungTheoCau.get(maCauHoi) ?? new Set<number>();
+      const chon = new Set(daChonTheoCau.get(maCauHoi) ?? []);
+      if (dung.size === 0) continue;
+      if (dung.size === chon.size && [...dung].every((id) => chon.has(id)))
+        soCauDung++;
+    }
+
+    const diemSo =
+      tongSoCau > 0 ? Math.round((soCauDung / tongSoCau) * 10 * 100) / 100 : 0;
+
+    return { diemSo, tongSoCau, soCauDung };
+  }
+}
