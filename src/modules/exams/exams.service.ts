@@ -12,11 +12,14 @@ import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { ExamQuestionOrderDto } from './dto/exam-question-order.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
+import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
+import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
 
 @Injectable()
 export class ExamsService {
   constructor(
     @InjectRepository(BaiThi) private baiThiRepo: Repository<BaiThi>,
+    @InjectRepository(PhongThi) private phongThiRepo: Repository<PhongThi>,
     private dataSource: DataSource,
   ) {}
 
@@ -133,7 +136,20 @@ export class ExamsService {
 
   async remove(id: number, taoBoi?: number) {
     const baiThi = await this.findOne(id, taoBoi);
-    // TODO: khi có module exam-rooms, kiểm tra PHONG_THI đang hoạt động trước khi xóa
+
+    // Không cho xóa đề thi khi còn phòng thi đang hoạt động (đang chờ / đang diễn ra)
+    const phongHoatDong = await this.phongThiRepo.countBy({
+      maBaiThi: id,
+      trangThai: In([
+        TrangThaiPhongThi.DANG_CHO,
+        TrangThaiPhongThi.DANG_DIEN_RA,
+      ]),
+    });
+    if (phongHoatDong > 0)
+      throw new BadRequestException(
+        'Không thể xóa đề thi khi còn đề thi đang được sử dụng',
+      );
+
     await this.baiThiRepo.remove(baiThi);
     return null;
   }
