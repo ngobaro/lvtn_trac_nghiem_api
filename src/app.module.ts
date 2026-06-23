@@ -9,6 +9,7 @@ import { databaseConfig } from './config/database.config';
 import { SubjectsModule } from './modules/subjects/subjects.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { ExamsModule } from './modules/exams/exams.module';
+import { ExamRoomsModule } from './modules/exam-rooms/exam-rooms.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ExamsModule } from './modules/exams/exams.module';
     SubjectsModule,
     QuestionsModule,
     ExamsModule,
+    ExamRoomsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
