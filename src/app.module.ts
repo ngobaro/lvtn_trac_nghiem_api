@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -10,10 +11,12 @@ import { SubjectsModule } from './modules/subjects/subjects.module';
 import { QuestionsModule } from './modules/questions/questions.module';
 import { ExamsModule } from './modules/exams/exams.module';
 import { ExamRoomsModule } from './modules/exam-rooms/exam-rooms.module';
+import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRoot(databaseConfig()),
 
     AuthModule,
@@ -22,6 +25,7 @@ import { ExamRoomsModule } from './modules/exam-rooms/exam-rooms.module';
     QuestionsModule,
     ExamsModule,
     ExamRoomsModule,
+    ExamSessionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
