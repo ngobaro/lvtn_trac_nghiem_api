@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Client, Storage, ID,  } from 'node-appwrite';
+import { Client, Storage, ID } from 'node-appwrite';
 import { InputFile } from 'node-appwrite/file';
 
 @Injectable()
@@ -28,5 +28,17 @@ export class AppwriteService {
 
   async deleteFile(fileId: string): Promise<void> {
     await this.storage.deleteFile(this.bucketId, fileId);
+  }
+
+  // Tách fileId từ URL view do uploadFile tạo
+  extractFileId(url: string): string | null {
+    const match = url.match(/\/files\/([^/]+)\/view/);
+    return match ? match[1] : null;
+  }
+
+  // Xóa file dựa trên URL đã lưu (bỏ qua nếu URL không hợp lệ)
+  async deleteFileByUrl(url: string): Promise<void> {
+    const fileId = this.extractFileId(url);
+    if (fileId) await this.deleteFile(fileId);
   }
 }
