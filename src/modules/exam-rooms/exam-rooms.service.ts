@@ -68,6 +68,8 @@ export class ExamRoomsService {
       throw new BadRequestException(
         'Thời gian mở phòng phải trước thời gian đóng phòng',
       );
+    if (dongLuc <= new Date())
+      throw new BadRequestException('Thời gian đóng phòng phải ở tương lai');
 
     // Đề thi phải tồn tại, thuộc quyền sở hữu và đã công khai mới được tạo phòng
     const baiThi = await this.baiThiRepo.findOne({
