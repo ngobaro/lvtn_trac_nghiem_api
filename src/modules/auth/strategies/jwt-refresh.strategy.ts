@@ -8,7 +8,7 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
   constructor() {
     super({
       jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
-      secretOrKey: process.env.JWT_REFRESH_SECRET || 'refresh_secret',
+      secretOrKey: process.env.JWT_REFRESH_SECRET as string,
     });
   }
   async validate(payload: any) {
