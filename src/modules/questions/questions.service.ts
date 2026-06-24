@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { CauHoi } from './entities/cau-hoi.entity';
@@ -14,6 +14,8 @@ import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 
 @Injectable()
 export class QuestionsService {
+    private readonly logger = new Logger(QuestionsService.name);
+
     constructor(
         @InjectRepository(CauHoi) private cauHoiRepo: Repository<CauHoi>,
         @InjectRepository(LuaChon) private luaChonRepo: Repository<LuaChon>,
@@ -114,16 +116,44 @@ export class QuestionsService {
     async remove(id: number, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
+        const anhCu = cauHoi.hinhAnh;
         await this.cauHoiRepo.remove(cauHoi);
+
+        // Xóa ảnh trên Appwrite sau khi đã xóa câu hỏi
+        if (anhCu) {
+            try {
+                await this.appwriteService.deleteFileByUrl(anhCu);
+            } catch (e) {
+                this.logger.error(
+                    `Không xóa được ảnh của câu hỏi ${id}: ${(e as Error).message}`,
+                );
+            }
+        }
+
         return null;
     }
 
     async updateImage(id: number, file: Express.Multer.File, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
+
+        const anhCu = cauHoi.hinhAnh;
         const url = await this.appwriteService.uploadFile(file);
         cauHoi.hinhAnh = url;
-        return this.cauHoiRepo.save(cauHoi);
+        const daLuu = await this.cauHoiRepo.save(cauHoi);
+
+        // Xóa ảnh cũ sau khi đã lưu ảnh mới thành công
+        if (anhCu) {
+            try {
+                await this.appwriteService.deleteFileByUrl(anhCu);
+            } catch (e) {
+                this.logger.error(
+                    `Không xóa được ảnh cũ của câu hỏi ${id}: ${(e as Error).message}`,
+                );
+            }
+        }
+
+        return daLuu;
     }
 
     // Câu hỏi thuộc đề thi ĐÃ CÔNG KHAI thì khóa sửa/xóa để giữ ổn định nội dung & đáp án.
