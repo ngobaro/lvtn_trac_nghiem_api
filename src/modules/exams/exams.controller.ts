@@ -19,6 +19,7 @@ import { ResponseMessage } from '../../common/decorators/response-message.decora
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { UpdateExamStatusDto } from './dto/update-exam-status.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @Controller('exams')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -28,14 +29,10 @@ export class ExamsController {
 
   @Get()
   @ResponseMessage('Lấy danh sách đề thi thành công')
-  findAll(
-    @Query('page') page = 1,
-    @Query('limit') limit = 20,
-    @CurrentUser() user: any,
-  ) {
+  findAll(@Query() query: PaginationDto, @CurrentUser() user: any) {
     const taoBoi =
       user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
-    return this.examsService.findAll(+page, +limit, taoBoi);
+    return this.examsService.findAll(query.page, query.limit, taoBoi);
   }
 
   @Get(':id')

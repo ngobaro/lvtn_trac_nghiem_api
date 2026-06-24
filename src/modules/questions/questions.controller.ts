@@ -10,6 +10,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @Controller('questions')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -19,14 +20,10 @@ export class QuestionsController {
 
     @Get()
     @ResponseMessage('Lấy danh sách câu hỏi thành công')
-    findAll(
-        @Query('page') page = 1,
-        @Query('limit') limit = 20,
-        @CurrentUser() user: any,
-    ) {
+    findAll(@Query() query: PaginationDto, @CurrentUser() user: any) {
         // Admin không truyền taoBoi => lấy toàn bộ
         const taoBoi = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
-        return this.questionsService.findAll(+page, +limit, taoBoi);
+        return this.questionsService.findAll(query.page, query.limit, taoBoi);
     }
 
     @Get(':id')
