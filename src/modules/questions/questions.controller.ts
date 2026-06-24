@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '../../common/interfaces/current-user.interface';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -20,7 +21,7 @@ export class QuestionsController {
 
     @Get()
     @ResponseMessage('Lấy danh sách câu hỏi thành công')
-    findAll(@Query() query: PaginationDto, @CurrentUser() user: any) {
+    findAll(@Query() query: PaginationDto, @CurrentUser() user: CurrentUserPayload) {
         // Admin không truyền taoBoi => lấy toàn bộ
         const taoBoi = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
         return this.questionsService.findAll(query.page, query.limit, taoBoi);
@@ -28,14 +29,14 @@ export class QuestionsController {
 
     @Get(':id')
     @ResponseMessage('Lấy thông tin câu hỏi thành công')
-    findOne(@Param('id') id: number, @CurrentUser() user: any) {
+    findOne(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
         const taoBoi = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
         return this.questionsService.findOne(+id, taoBoi);
     }
 
     @Post()
     @ResponseMessage('Tạo câu hỏi thành công')
-    create(@Body() dto: CreateQuestionDto, @CurrentUser() user: any) {
+    create(@Body() dto: CreateQuestionDto, @CurrentUser() user: CurrentUserPayload) {
         return this.questionsService.create(dto, user.maNguoiDung);
     }
 
@@ -44,7 +45,7 @@ export class QuestionsController {
     update(
         @Param('id') id: number,
         @Body() dto: UpdateQuestionDto,
-        @CurrentUser() user: any,
+        @CurrentUser() user: CurrentUserPayload,
     ) {
         const taoBoi = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
         return this.questionsService.update(+id, dto, taoBoi);
@@ -52,7 +53,7 @@ export class QuestionsController {
 
     @Delete(':id')
     @ResponseMessage('Xóa câu hỏi thành công')
-    remove(@Param('id') id: number, @CurrentUser() user: any) {
+    remove(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
         const taoBoi = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
         return this.questionsService.remove(+id, taoBoi);
     }
@@ -72,7 +73,7 @@ export class QuestionsController {
     async uploadImage(
         @Param('id') id: number,
         @UploadedFile() file: Express.Multer.File,
-        @CurrentUser() user: any
+        @CurrentUser() user: CurrentUserPayload
     ) {
         const taoBoi = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
         return this.questionsService.updateImage(+id, file, taoBoi);

@@ -83,7 +83,7 @@ export class QuestionsService {
         });
     }
 
-    async update(id: number, dto: UpdateQuestionDto, taoBoi: number) {
+    async update(id: number, dto: UpdateQuestionDto, taoBoi?: number) {
         await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
         return this.dataSource.transaction(async (em) => {
@@ -111,14 +111,14 @@ export class QuestionsService {
         });
     }
 
-    async remove(id: number, taoBoi: number) {
+    async remove(id: number, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
         await this.cauHoiRepo.remove(cauHoi);
         return null;
     }
 
-    async updateImage(id: number, file: Express.Multer.File, taoBoi: number) {
+    async updateImage(id: number, file: Express.Multer.File, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
         const url = await this.appwriteService.uploadFile(file);
