@@ -13,6 +13,7 @@ import { CreateExamRoomDto } from './dto/create-exam-room.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
 import { CheDoCauHoi } from '../../common/enums/che-do-cau-hoi.enum';
+import { ExamSessionsService } from '../exam-sessions/exam-sessions.service';
 
 // Các bước chuyển trạng thái phòng thi hợp lệ
 const TRANSITIONS: Record<TrangThaiPhongThi, TrangThaiPhongThi[]> = {
@@ -32,6 +33,7 @@ export class ExamRoomsService {
     private thanhVienRepo: Repository<ThanhVienPhong>,
     @InjectRepository(BaiThi) private baiThiRepo: Repository<BaiThi>,
     private dataSource: DataSource,
+    private examSessionsService: ExamSessionsService,
   ) {}
 
   // taoBoi = undefined => admin, không filter theo người tạo
@@ -123,7 +125,13 @@ export class ExamRoomsService {
       );
 
     phongThi.trangThai = trangThai;
-    return this.phongThiRepo.save(phongThi);
+    const daLuu = await this.phongThiRepo.save(phongThi);
+
+    // Đóng phòng -> chốt mọi bài làm còn đang làm (kể cả đóng sớm trước dongLuc)
+    if (trangThai === TrangThaiPhongThi.DA_DONG)
+      await this.examSessionsService.chotBaiLamCuaPhong(phongThi.maPhongThi);
+
+    return daLuu;
   }
 
   async getMembers(id: number, taoBoi?: number) {

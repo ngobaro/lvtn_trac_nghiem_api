@@ -33,5 +33,6 @@ import { KetQua } from '../results/entities/ket-qua.entity';
   ],
   controllers: [ExamSessionsController],
   providers: [ExamSessionsService, ExamSessionsGateway],
+  exports: [ExamSessionsService],
 })
 export class ExamSessionsModule {}
