@@ -1,0 +1,222 @@
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, DataSource, In } from 'typeorm';
+import { KetQua } from './entities/ket-qua.entity';
+import { BaiThi } from '../exams/entities/bai-thi.entity';
+import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
+import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
+import { NguoiDungTraLoi } from '../exam-sessions/entities/nguoi-dung-tra-loi.entity';
+import { LuaChon } from '../questions/entities/lua-chon.entity';
+import { DapAn } from '../questions/entities/dap-an.entity';
+import { QueryResultDto } from './dto/query-result.dto';
+import { QueryResultStatsDto } from './dto/query-result-stats.dto';
+import { VaiTro } from '../../common/enums/vai-tro.enum';
+
+@Injectable()
+export class ResultsService {
+  constructor(
+    @InjectRepository(KetQua) private ketQuaRepo: Repository<KetQua>,
+    private dataSource: DataSource,
+  ) {}
+
+  // Lịch sử thi của học sinh hiện tại
+  async getMyResults(maNguoiDung: number, page = 1, limit = 20) {
+    const qb = this.ketQuaRepo
+      .createQueryBuilder('kq')
+      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
+      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
+      .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung })
+      .select([
+        'kq.maKetQua AS maKetQua',
+        'kq.maBaiLam AS maBaiLam',
+        'kq.maBaiThi AS maBaiThi',
+        'kq.diemSo AS diemSo',
+        'kq.tongSoCau AS tongSoCau',
+        'kq.soCauDung AS soCauDung',
+        'bt.tieuDe AS tieuDe',
+        'bl.maPhongThi AS maPhongThi',
+        'bl.thoiGianBatDau AS thoiGianBatDau',
+        'bl.thoiGianKetThuc AS thoiGianNop',
+        'bl.trangThai AS trangThaiBaiLam',
+      ])
+      .orderBy('kq.maKetQua', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit);
+
+    const items = await qb.getRawMany();
+    const total = await this.ketQuaRepo.countBy({ maNguoiDung });
+    return { items, total, page, limit };
+  }
+
+  // Danh sách kết quả theo đề thi / phòng thi (GV chỉ xem đề của mình, Admin xem tất cả)
+  async getResults(query: QueryResultDto, user: any) {
+    const { page = 1, limit = 20, maBaiThi, maPhongThi, maNguoiDung } = query;
+
+    const qb = this.ketQuaRepo
+      .createQueryBuilder('kq')
+      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
+      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam');
+
+    if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
+      qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi: user.maNguoiDung });
+    if (maBaiThi) qb.andWhere('kq.maBaiThi = :maBaiThi', { maBaiThi });
+    if (maPhongThi) qb.andWhere('bl.maPhongThi = :maPhongThi', { maPhongThi });
+    if (maNguoiDung)
+      qb.andWhere('kq.maNguoiDung = :maNguoiDung', { maNguoiDung });
+
+    const countQb = qb.clone();
+
+    qb.select([
+      'kq.maKetQua AS maKetQua',
+      'kq.maBaiLam AS maBaiLam',
+      'kq.maBaiThi AS maBaiThi',
+      'kq.maNguoiDung AS maNguoiDung',
+      'kq.diemSo AS diemSo',
+      'kq.tongSoCau AS tongSoCau',
+      'kq.soCauDung AS soCauDung',
+      'bt.tieuDe AS tieuDe',
+      'bl.maPhongThi AS maPhongThi',
+      'bl.thoiGianKetThuc AS thoiGianNop',
+    ])
+      .orderBy('kq.maKetQua', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit);
+
+    const items = await qb.getRawMany();
+    const total = await countQb.getCount();
+    return { items, total, page, limit };
+  }
+
+  // Chi tiết 1 kết quả: từng câu hỏi kèm đáp án đã chọn vs đáp án đúng
+  async getResultDetail(maKetQua: number, user: any) {
+    const ketQua = await this.ketQuaRepo.findOne({ where: { maKetQua } });
+    if (!ketQua) throw new NotFoundException('Không tìm thấy kết quả');
+
+    await this.kiemTraQuyenXem(ketQua, user);
+
+    const cauHoiBaiLams = await this.dataSource
+      .getRepository(CauHoiBaiLam)
+      .find({
+        where: { maBaiLam: ketQua.maBaiLam },
+        relations: { cauHoi: { luaChons: true } },
+        order: { thuTuHienThi: 'ASC' },
+      });
+
+    const daChonTheoCau = await this.mapDaChon(ketQua.maBaiLam);
+    const dapAnDung = await this.mapDapAnDung(
+      cauHoiBaiLams.flatMap((c) => c.cauHoi.luaChons ?? []),
+    );
+
+    const cauHois = cauHoiBaiLams.map((c) => {
+      const daChon = daChonTheoCau.get(c.maCauHoi) ?? new Set<number>();
+      const luaChons = (c.cauHoi.luaChons ?? []).map((lc) => ({
+        maLuaChon: lc.maLuaChon,
+        noiDung: lc.noiDung,
+        laDapAnDung: dapAnDung.has(lc.maLuaChon),
+        daChon: daChon.has(lc.maLuaChon),
+      }));
+      const dung =
+        luaChons.length > 0 &&
+        luaChons.every((lc) => lc.laDapAnDung === lc.daChon) &&
+        luaChons.some((lc) => lc.laDapAnDung);
+      return {
+        thuTuHienThi: c.thuTuHienThi,
+        maCauHoi: c.maCauHoi,
+        noiDung: c.cauHoi.noiDung,
+        hinhAnh: c.cauHoi.hinhAnh,
+        loaiCauHoi: c.cauHoi.loaiCauHoi,
+        dung,
+        luaChons,
+      };
+    });
+
+    return {
+      maKetQua: ketQua.maKetQua,
+      maBaiLam: ketQua.maBaiLam,
+      maBaiThi: ketQua.maBaiThi,
+      diemSo: ketQua.diemSo,
+      tongSoCau: ketQua.tongSoCau,
+      soCauDung: ketQua.soCauDung,
+      cauHois,
+    };
+  }
+
+  // Thống kê điểm theo đề thi / phòng thi / môn học
+  async getStats(query: QueryResultStatsDto, user: any) {
+    const { maBaiThi, maPhongThi, maMonHoc } = query;
+
+    const qb = this.ketQuaRepo
+      .createQueryBuilder('kq')
+      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
+      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam');
+
+    if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
+      qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi: user.maNguoiDung });
+    if (maBaiThi) qb.andWhere('kq.maBaiThi = :maBaiThi', { maBaiThi });
+    if (maPhongThi) qb.andWhere('bl.maPhongThi = :maPhongThi', { maPhongThi });
+    if (maMonHoc) qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+
+    const raw = await qb
+      .select('COUNT(kq.maKetQua)', 'soLuotThi')
+      .addSelect('AVG(kq.diemSo)', 'diemTrungBinh')
+      .addSelect('MAX(kq.diemSo)', 'diemCaoNhat')
+      .addSelect('MIN(kq.diemSo)', 'diemThapNhat')
+      .getRawOne();
+
+    const soLuotThi = Number(raw.soLuotThi) || 0;
+    return {
+      soLuotThi,
+      diemTrungBinh: soLuotThi
+        ? Math.round(Number(raw.diemTrungBinh) * 100) / 100
+        : 0,
+      diemCaoNhat: soLuotThi ? Number(raw.diemCaoNhat) : 0,
+      diemThapNhat: soLuotThi ? Number(raw.diemThapNhat) : 0,
+    };
+  }
+
+  // ----- Helpers -----
+
+  private async kiemTraQuyenXem(ketQua: KetQua, user: any) {
+    if (user.vaiTro === VaiTro.QUAN_TRI_VIEN) return;
+    if (user.vaiTro === VaiTro.HOC_SINH) {
+      if (ketQua.maNguoiDung !== user.maNguoiDung)
+        throw new ForbiddenException('Bạn không có quyền xem kết quả này');
+      return;
+    }
+    // Giáo viên: chỉ xem kết quả của đề thi do mình tạo
+    const baiThi = await this.dataSource
+      .getRepository(BaiThi)
+      .findOne({ where: { maBaiThi: ketQua.maBaiThi } });
+    if (!baiThi || baiThi.taoBoi !== user.maNguoiDung)
+      throw new ForbiddenException('Bạn không có quyền xem kết quả này');
+  }
+
+  // map maCauHoi -> Set(maLuaChon đã chọn)
+  private async mapDaChon(maBaiLam: number): Promise<Map<number, Set<number>>> {
+    const traLois = await this.dataSource
+      .getRepository(NguoiDungTraLoi)
+      .find({ where: { maBaiLam } });
+    const map = new Map<number, Set<number>>();
+    for (const tl of traLois) {
+      if (tl.maLuaChon == null) continue;
+      const set = map.get(tl.maCauHoi) ?? new Set<number>();
+      set.add(tl.maLuaChon);
+      map.set(tl.maCauHoi, set);
+    }
+    return map;
+  }
+
+  // tập maLuaChon là đáp án đúng
+  private async mapDapAnDung(luaChons: LuaChon[]): Promise<Set<number>> {
+    const ids = luaChons.map((lc) => lc.maLuaChon);
+    if (ids.length === 0) return new Set();
+    const dapAns = await this.dataSource
+      .getRepository(DapAn)
+      .findBy({ maLuaChon: In(ids) });
+    return new Set(dapAns.map((d) => d.maLuaChon));
+  }
+}
