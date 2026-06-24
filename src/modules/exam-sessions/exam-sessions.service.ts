@@ -60,11 +60,7 @@ export class ExamSessionsService {
     const baiLamCu = await this.baiLamRepo.findOne({
       where: { maPhongThi: phong.maPhongThi, maNguoiDung },
     });
-    if (baiLamCu) {
-      if (baiLamCu.trangThai === TrangThaiBaiLam.DANG_LAM)
-        return this.getSession(baiLamCu.maBaiLam, maNguoiDung); // resume
-      throw new BadRequestException('Bạn đã hoàn thành bài thi này');
-    }
+    if (baiLamCu) return this.resumeHoacChan(baiLamCu, maNguoiDung);
 
     // Kiểm tra giới hạn số người tham gia
     if (phong.soNguoiThamGia) {
@@ -87,47 +83,75 @@ export class ExamSessionsService {
 
     const cauHoiHienThi = this.chonCauHoi(dsCauHoi, phong);
 
-    const maBaiLam = await this.dataSource.transaction(async (em) => {
-      const baiLam = await em.save(
-        BaiLam,
-        em.create(BaiLam, {
-          maPhongThi: phong.maPhongThi,
-          maBaiThi: phong.maBaiThi,
-          maNguoiDung,
-          thoiGianBatDau: now,
-          // thoiGianKetThuc = thời điểm nộp thực tế, cập nhật khi nộp bài.
-          // Tạm gán = thời điểm bắt đầu (cột NOT NULL); hạn nộp lấy từ phong.dongLuc.
-          thoiGianKetThuc: now,
-          trangThai: TrangThaiBaiLam.DANG_LAM,
-        }),
-      );
+    let maBaiLam: number;
+    try {
+      maBaiLam = await this.dataSource.transaction(async (em) => {
+        const baiLam = await em.save(
+          BaiLam,
+          em.create(BaiLam, {
+            maPhongThi: phong.maPhongThi,
+            maBaiThi: phong.maBaiThi,
+            maNguoiDung,
+            thoiGianBatDau: now,
+            // thoiGianKetThuc = thời điểm nộp thực tế, cập nhật khi nộp bài.
+            // Tạm gán = thời điểm bắt đầu (cột NOT NULL); hạn nộp lấy từ phong.dongLuc.
+            thoiGianKetThuc: now,
+            trangThai: TrangThaiBaiLam.DANG_LAM,
+          }),
+        );
 
-      await Promise.all(
-        cauHoiHienThi.map((ch, i) =>
-          em.save(
-            CauHoiBaiLam,
-            em.create(CauHoiBaiLam, {
-              maBaiLam: baiLam.maBaiLam,
-              maCauHoi: ch.maCauHoi,
-              thuTuHienThi: i + 1,
-            }),
+        await Promise.all(
+          cauHoiHienThi.map((ch, i) =>
+            em.save(
+              CauHoiBaiLam,
+              em.create(CauHoiBaiLam, {
+                maBaiLam: baiLam.maBaiLam,
+                maCauHoi: ch.maCauHoi,
+                thuTuHienThi: i + 1,
+              }),
+            ),
           ),
-        ),
-      );
+        );
 
-      await em.save(
-        ThanhVienPhong,
-        em.create(ThanhVienPhong, {
-          maPhongThi: phong.maPhongThi,
-          maNguoiDung,
-          trangThai: TrangThaiThanhVien.DA_THAM_GIA,
-        }),
-      );
+        await em.save(
+          ThanhVienPhong,
+          em.create(ThanhVienPhong, {
+            maPhongThi: phong.maPhongThi,
+            maNguoiDung,
+            trangThai: TrangThaiThanhVien.DA_THAM_GIA,
+          }),
+        );
 
-      return baiLam.maBaiLam;
-    });
+        return baiLam.maBaiLam;
+      });
+    } catch (e) {
+      // Hai request join gần như đồng thời: unique index (maPhongThi, maNguoiDung)
+      // chặn bản ghi thứ hai -> lấy lại bài làm đã tạo và resume thay vì báo lỗi.
+      if (this.laLoiTrungKhoa(e)) {
+        const tonTai = await this.baiLamRepo.findOne({
+          where: { maPhongThi: phong.maPhongThi, maNguoiDung },
+        });
+        if (tonTai) return this.resumeHoacChan(tonTai, maNguoiDung);
+      }
+      throw e;
+    }
 
     return this.getSession(maBaiLam, maNguoiDung);
+  }
+
+  // Bài làm đã tồn tại: còn đang làm -> resume; đã nộp/hết giờ -> chặn
+  private resumeHoacChan(baiLam: BaiLam, maNguoiDung: number) {
+    if (baiLam.trangThai === TrangThaiBaiLam.DANG_LAM)
+      return this.getSession(baiLam.maBaiLam, maNguoiDung);
+    throw new BadRequestException('Bạn đã hoàn thành bài thi này');
+  }
+
+  private laLoiTrungKhoa(e: any): boolean {
+    return (
+      e?.code === 'ER_DUP_ENTRY' ||
+      e?.errno === 1062 ||
+      e?.driverError?.errno === 1062
+    );
   }
 
   // Thông tin phiên thi + toàn bộ câu hỏi (KHÔNG kèm đáp án đúng)

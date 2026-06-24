@@ -5,13 +5,16 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  Unique,
 } from 'typeorm';
 import { TrangThaiBaiLam } from '../../../common/enums/trang-thai-bai-lam.enum';
 import { PhongThi } from '../../exam-rooms/entities/phong-thi.entity';
 import { BaiThi } from '../../exams/entities/bai-thi.entity';
 import { CauHoiBaiLam } from './cau-hoi-bai-lam.entity';
 
+// Mỗi học sinh chỉ có 1 bài làm trong 1 phòng
 @Entity('BAI_LAM')
+@Unique('uq_bailam_phong_nguoidung', ['maPhongThi', 'maNguoiDung'])
 export class BaiLam {
   @PrimaryGeneratedColumn()
   maBaiLam: number;
