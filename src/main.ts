@@ -32,7 +32,13 @@ async function bootstrap() {
   app.setGlobalPrefix(prefix);
 
   app.enableCors({ origin: '*' });
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    }),
+  );
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalInterceptors(new ResponseInterceptor(new Reflector()));
 
