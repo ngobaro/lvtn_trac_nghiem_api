@@ -4,12 +4,15 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Unique,
 } from 'typeorm';
 import { NguoiDung } from '../../auth/entities/nguoi-dung.entity';
 import { TrangThaiThanhVien } from '../../../common/enums/trang-thai-thanh-vien.enum';
 import { PhongThi } from './phong-thi.entity';
 
+// Mỗi học sinh chỉ là thành viên 1 lần trong 1 phòng
 @Entity('THANH_VIEN_PHONG')
+@Unique('uq_tvp_phong_nguoidung', ['maPhongThi', 'maNguoiDung'])
 export class ThanhVienPhong {
   @PrimaryGeneratedColumn()
   maThanhVien: number;

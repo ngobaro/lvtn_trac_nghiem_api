@@ -6,10 +6,12 @@ import { PhongThi } from './entities/phong-thi.entity';
 import { ThanhVienPhong } from './entities/thanh-vien-phong.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
+import { ExamSessionsModule } from '../exam-sessions/exam-sessions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([PhongThi, ThanhVienPhong, BaiThi, CauHoiBaiThi]),
+    ExamSessionsModule,
   ],
   controllers: [ExamRoomsController],
   providers: [ExamRoomsService],

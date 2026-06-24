@@ -29,9 +29,10 @@ import { KetQua } from '../results/entities/ket-qua.entity';
       DapAn,
       KetQua,
     ]),
-    JwtModule.register({ secret: process.env.JWT_SECRET || 'secret' }),
+    JwtModule.register({ secret: process.env.JWT_SECRET }),
   ],
   controllers: [ExamSessionsController],
   providers: [ExamSessionsService, ExamSessionsGateway],
+  exports: [ExamSessionsService],
 })
 export class ExamSessionsModule {}

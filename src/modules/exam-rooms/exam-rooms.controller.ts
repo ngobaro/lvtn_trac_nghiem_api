@@ -13,10 +13,12 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '../../common/interfaces/current-user.interface';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
 import { CreateExamRoomDto } from './dto/create-exam-room.dto';
 import { UpdateExamRoomStatusDto } from './dto/update-exam-room-status.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @Controller('exam-rooms')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,19 +28,15 @@ export class ExamRoomsController {
 
   @Get()
   @ResponseMessage('Lấy danh sách phòng thi thành công')
-  findAll(
-    @Query('page') page = 1,
-    @Query('limit') limit = 20,
-    @CurrentUser() user: any,
-  ) {
+  findAll(@Query() query: PaginationDto, @CurrentUser() user: CurrentUserPayload) {
     const taoBoi =
       user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
-    return this.examRoomsService.findAll(+page, +limit, taoBoi);
+    return this.examRoomsService.findAll(query.page, query.limit, taoBoi);
   }
 
   @Get(':id')
   @ResponseMessage('Lấy thông tin phòng thi thành công')
-  findOne(@Param('id') id: number, @CurrentUser() user: any) {
+  findOne(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
     const taoBoi =
       user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
     return this.examRoomsService.findOne(+id, taoBoi);
@@ -46,7 +44,7 @@ export class ExamRoomsController {
 
   @Get(':id/members')
   @ResponseMessage('Lấy danh sách thành viên phòng thi thành công')
-  getMembers(@Param('id') id: number, @CurrentUser() user: any) {
+  getMembers(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
     const taoBoi =
       user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
     return this.examRoomsService.getMembers(+id, taoBoi);
@@ -55,7 +53,7 @@ export class ExamRoomsController {
   @Post()
   @Roles(VaiTro.GIAO_VIEN)
   @ResponseMessage('Tạo phòng thi thành công')
-  create(@Body() dto: CreateExamRoomDto, @CurrentUser() user: any) {
+  create(@Body() dto: CreateExamRoomDto, @CurrentUser() user: CurrentUserPayload) {
     return this.examRoomsService.create(dto, user.maNguoiDung);
   }
 
@@ -65,7 +63,7 @@ export class ExamRoomsController {
   updateStatus(
     @Param('id') id: number,
     @Body() dto: UpdateExamRoomStatusDto,
-    @CurrentUser() user: any,
+    @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.examRoomsService.updateStatus(
       +id,

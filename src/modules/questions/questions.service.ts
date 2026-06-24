@@ -8,6 +8,9 @@ import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
 import { LoaiCauHoi } from '../../common/enums/loai-cau-hoi.enum';
 import { AppwriteService } from '../../common/services/appwrite.service';
+import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
+import { BaiThi } from '../exams/entities/bai-thi.entity';
+import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 
 @Injectable()
 export class QuestionsService {
@@ -80,8 +83,9 @@ export class QuestionsService {
         });
     }
 
-    async update(id: number, dto: UpdateQuestionDto, taoBoi: number) {
+    async update(id: number, dto: UpdateQuestionDto, taoBoi?: number) {
         await this.findOne(id, taoBoi);
+        await this.kiemTraCauHoiDaDung(id);
         return this.dataSource.transaction(async (em) => {
             await em.update(CauHoi, id, {
                 noiDung: dto.noiDung,
@@ -107,16 +111,36 @@ export class QuestionsService {
         });
     }
 
-    async remove(id: number, taoBoi: number) {
+    async remove(id: number, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
+        await this.kiemTraCauHoiDaDung(id);
         await this.cauHoiRepo.remove(cauHoi);
         return null;
     }
 
-    async updateImage(id: number, file: Express.Multer.File, taoBoi: number) {
+    async updateImage(id: number, file: Express.Multer.File, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
+        await this.kiemTraCauHoiDaDung(id);
         const url = await this.appwriteService.uploadFile(file);
         cauHoi.hinhAnh = url;
         return this.cauHoiRepo.save(cauHoi);
+    }
+
+    // Câu hỏi thuộc đề thi ĐÃ CÔNG KHAI thì khóa sửa/xóa để giữ ổn định nội dung & đáp án.
+    // Câu hỏi chỉ nằm trong đề còn nháp vẫn cho phép sửa.
+    private async kiemTraCauHoiDaDung(maCauHoi: number) {
+        const daDung = await this.dataSource
+            .getRepository(CauHoiBaiThi)
+            .createQueryBuilder('chbt')
+            .innerJoin(BaiThi, 'bt', 'bt.maBaiThi = chbt.maBaiThi')
+            .where('chbt.maCauHoi = :maCauHoi', { maCauHoi })
+            .andWhere('bt.trangThai = :trangThai', {
+                trangThai: TrangThaiBaiThi.CONG_KHAI,
+            })
+            .getCount();
+        if (daDung > 0)
+            throw new BadRequestException(
+                'Câu hỏi đã thuộc đề thi đã công khai, không thể sửa hoặc xóa',
+            );
     }
 }

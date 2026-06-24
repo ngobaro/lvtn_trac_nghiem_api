@@ -29,11 +29,4 @@ export class UsersService {
     user.laHoatDong = laHoatDong;
     return this.repo.save(user);
   }
-
-  async remove(id: number) {
-    const user = await this.findOne(id);
-    // TODO: kiểm tra ràng buộc BAI_LAM đang diễn ra
-    await this.repo.remove(user);
-    return null;
-  }
 }

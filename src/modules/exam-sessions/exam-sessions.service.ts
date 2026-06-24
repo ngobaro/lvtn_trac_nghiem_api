@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource, In } from 'typeorm';
+import { Repository, DataSource, EntityManager, In } from 'typeorm';
 import { BaiLam } from './entities/bai-lam.entity';
 import { CauHoiBaiLam } from './entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from './entities/nguoi-dung-tra-loi.entity';
@@ -60,11 +60,7 @@ export class ExamSessionsService {
     const baiLamCu = await this.baiLamRepo.findOne({
       where: { maPhongThi: phong.maPhongThi, maNguoiDung },
     });
-    if (baiLamCu) {
-      if (baiLamCu.trangThai === TrangThaiBaiLam.DANG_LAM)
-        return this.getSession(baiLamCu.maBaiLam, maNguoiDung); // resume
-      throw new BadRequestException('Bạn đã hoàn thành bài thi này');
-    }
+    if (baiLamCu) return this.resumeHoacChan(baiLamCu, maNguoiDung);
 
     // Kiểm tra giới hạn số người tham gia
     if (phong.soNguoiThamGia) {
@@ -87,47 +83,75 @@ export class ExamSessionsService {
 
     const cauHoiHienThi = this.chonCauHoi(dsCauHoi, phong);
 
-    const maBaiLam = await this.dataSource.transaction(async (em) => {
-      const baiLam = await em.save(
-        BaiLam,
-        em.create(BaiLam, {
-          maPhongThi: phong.maPhongThi,
-          maBaiThi: phong.maBaiThi,
-          maNguoiDung,
-          thoiGianBatDau: now,
-          // thoiGianKetThuc = thời điểm nộp thực tế, cập nhật khi nộp bài.
-          // Tạm gán = thời điểm bắt đầu (cột NOT NULL); hạn nộp lấy từ phong.dongLuc.
-          thoiGianKetThuc: now,
-          trangThai: TrangThaiBaiLam.DANG_LAM,
-        }),
-      );
+    let maBaiLam: number;
+    try {
+      maBaiLam = await this.dataSource.transaction(async (em) => {
+        const baiLam = await em.save(
+          BaiLam,
+          em.create(BaiLam, {
+            maPhongThi: phong.maPhongThi,
+            maBaiThi: phong.maBaiThi,
+            maNguoiDung,
+            thoiGianBatDau: now,
+            // thoiGianKetThuc = thời điểm nộp thực tế, cập nhật khi nộp bài.
+            // Tạm gán = thời điểm bắt đầu (cột NOT NULL); hạn nộp lấy từ phong.dongLuc.
+            thoiGianKetThuc: now,
+            trangThai: TrangThaiBaiLam.DANG_LAM,
+          }),
+        );
 
-      await Promise.all(
-        cauHoiHienThi.map((ch, i) =>
-          em.save(
-            CauHoiBaiLam,
-            em.create(CauHoiBaiLam, {
-              maBaiLam: baiLam.maBaiLam,
-              maCauHoi: ch.maCauHoi,
-              thuTuHienThi: i + 1,
-            }),
+        await Promise.all(
+          cauHoiHienThi.map((ch, i) =>
+            em.save(
+              CauHoiBaiLam,
+              em.create(CauHoiBaiLam, {
+                maBaiLam: baiLam.maBaiLam,
+                maCauHoi: ch.maCauHoi,
+                thuTuHienThi: i + 1,
+              }),
+            ),
           ),
-        ),
-      );
+        );
 
-      await em.save(
-        ThanhVienPhong,
-        em.create(ThanhVienPhong, {
-          maPhongThi: phong.maPhongThi,
-          maNguoiDung,
-          trangThai: TrangThaiThanhVien.DA_THAM_GIA,
-        }),
-      );
+        await em.save(
+          ThanhVienPhong,
+          em.create(ThanhVienPhong, {
+            maPhongThi: phong.maPhongThi,
+            maNguoiDung,
+            trangThai: TrangThaiThanhVien.DA_THAM_GIA,
+          }),
+        );
 
-      return baiLam.maBaiLam;
-    });
+        return baiLam.maBaiLam;
+      });
+    } catch (e) {
+      // Hai request join gần như đồng thời: unique index (maPhongThi, maNguoiDung)
+      // chặn bản ghi thứ hai -> lấy lại bài làm đã tạo và resume thay vì báo lỗi.
+      if (this.laLoiTrungKhoa(e)) {
+        const tonTai = await this.baiLamRepo.findOne({
+          where: { maPhongThi: phong.maPhongThi, maNguoiDung },
+        });
+        if (tonTai) return this.resumeHoacChan(tonTai, maNguoiDung);
+      }
+      throw e;
+    }
 
     return this.getSession(maBaiLam, maNguoiDung);
+  }
+
+  // Bài làm đã tồn tại: còn đang làm -> resume; đã nộp/hết giờ -> chặn
+  private resumeHoacChan(baiLam: BaiLam, maNguoiDung: number) {
+    if (baiLam.trangThai === TrangThaiBaiLam.DANG_LAM)
+      return this.getSession(baiLam.maBaiLam, maNguoiDung);
+    throw new BadRequestException('Bạn đã hoàn thành bài thi này');
+  }
+
+  private laLoiTrungKhoa(e: any): boolean {
+    return (
+      e?.code === 'ER_DUP_ENTRY' ||
+      e?.errno === 1062 ||
+      e?.driverError?.errno === 1062
+    );
   }
 
   // Thông tin phiên thi + toàn bộ câu hỏi (KHÔNG kèm đáp án đúng)
@@ -239,21 +263,24 @@ export class ExamSessionsService {
     return ketQua;
   }
 
-  // Chốt bài làm một cách atomic: tính điểm, lưu KET_QUA, cập nhật thành viên phòng.
+  // Chốt bài làm một cách atomic: claim trạng thái + tính điểm + lưu KET_QUA +
+  // cập nhật thành viên phòng, TẤT CẢ trong 1 transaction (all-or-nothing).
+  // Nếu bất kỳ bước nào lỗi -> rollback toàn bộ, bài giữ DANG_LAM để được chốt lại.
   // Dùng chung cho nộp tay / WebSocket / cron; chống nộp trùng bằng claim trạng thái.
   private async finalize(maBaiLam: number, trangThaiMoi: TrangThaiBaiLam) {
-    // Chỉ 1 tiến trình chuyển được DANG_LAM -> trạng thái cuối
-    const claim = await this.baiLamRepo.update(
-      { maBaiLam, trangThai: TrangThaiBaiLam.DANG_LAM },
-      { trangThai: trangThaiMoi, thoiGianKetThuc: new Date() },
-    );
-    if (!claim.affected) return null; // tiến trình khác đã chốt
+    return this.dataSource.transaction(async (em) => {
+      // Chỉ 1 tiến trình chuyển được DANG_LAM -> trạng thái cuối
+      const claim = await em.update(
+        BaiLam,
+        { maBaiLam, trangThai: TrangThaiBaiLam.DANG_LAM },
+        { trangThai: trangThaiMoi, thoiGianKetThuc: new Date() },
+      );
+      if (!claim.affected) return null; // tiến trình khác đã chốt
 
-    const baiLam = await this.baiLamRepo.findOne({ where: { maBaiLam } });
-    if (!baiLam) return null;
+      const baiLam = await em.findOne(BaiLam, { where: { maBaiLam } });
+      if (!baiLam) return null;
 
-    const ketQua = await this.chamDiem(maBaiLam);
-    await this.dataSource.transaction(async (em) => {
+      const ketQua = await this.chamDiem(maBaiLam, em);
       await em.save(
         KetQua,
         em.create(KetQua, {
@@ -270,8 +297,9 @@ export class ExamSessionsService {
         { maPhongThi: baiLam.maPhongThi, maNguoiDung: baiLam.maNguoiDung },
         { trangThai: TrangThaiThanhVien.DA_NOP_BAI },
       );
+
+      return ketQua;
     });
-    return ketQua;
   }
 
   // ----- Dùng cho WebSocket gateway -----
@@ -299,6 +327,23 @@ export class ExamSessionsService {
   // Tự động nộp bài khi hết giờ (trạng thái HET_THOI_GIAN). Bỏ qua nếu đã nộp.
   async autoSubmit(maBaiLam: number) {
     return this.finalize(maBaiLam, TrangThaiBaiLam.HET_THOI_GIAN);
+  }
+
+  // Chốt tất cả bài làm còn DANG_LAM của 1 phòng (dùng khi GV đóng phòng sớm).
+  async chotBaiLamCuaPhong(maPhongThi: number) {
+    const baiLams = await this.baiLamRepo.find({
+      where: { maPhongThi, trangThai: TrangThaiBaiLam.DANG_LAM },
+      select: { maBaiLam: true },
+    });
+    for (const { maBaiLam } of baiLams) {
+      try {
+        await this.autoSubmit(maBaiLam);
+      } catch (e) {
+        this.logger.error(
+          `Chốt bài ${maBaiLam} khi đóng phòng thất bại: ${(e as Error).message}`,
+        );
+      }
+    }
   }
 
   // Cron mỗi phút: chốt mọi bài làm còn DANG_LAM mà phòng đã quá hạn (dongLuc).
@@ -366,8 +411,12 @@ export class ExamSessionsService {
   }
 
   // map maCauHoi -> danh sách maLuaChon đã chọn
-  private async mapDaTraLoi(maBaiLam: number): Promise<Map<number, number[]>> {
-    const traLois = await this.traLoiRepo.find({ where: { maBaiLam } });
+  private async mapDaTraLoi(
+    maBaiLam: number,
+    em?: EntityManager,
+  ): Promise<Map<number, number[]>> {
+    const repo = em ? em.getRepository(NguoiDungTraLoi) : this.traLoiRepo;
+    const traLois = await repo.find({ where: { maBaiLam } });
     const map = new Map<number, number[]>();
     for (const tl of traLois) {
       if (tl.maLuaChon == null) continue;
@@ -394,24 +443,28 @@ export class ExamSessionsService {
   }
 
   // Tính điểm: 1 câu đúng khi tập lựa chọn đã chọn TRÙNG KHỚP tập đáp án đúng
-  private async chamDiem(maBaiLam: number) {
-    const cauHoiBaiLams = await this.cauHoiBaiLamRepo.find({
-      where: { maBaiLam },
-    });
+  private async chamDiem(maBaiLam: number, em?: EntityManager) {
+    const chblRepo = em
+      ? em.getRepository(CauHoiBaiLam)
+      : this.cauHoiBaiLamRepo;
+    const luaChonRepo = em
+      ? em.getRepository(LuaChon)
+      : this.dataSource.getRepository(LuaChon);
+    const dapAnRepo = em
+      ? em.getRepository(DapAn)
+      : this.dataSource.getRepository(DapAn);
+
+    const cauHoiBaiLams = await chblRepo.find({ where: { maBaiLam } });
     const tongSoCau = cauHoiBaiLams.length;
     const maCauHois = cauHoiBaiLams.map((c) => c.maCauHoi);
 
     // Lựa chọn đúng của từng câu hỏi
     const luaChons = maCauHois.length
-      ? await this.dataSource
-          .getRepository(LuaChon)
-          .findBy({ maCauHoi: In(maCauHois) })
+      ? await luaChonRepo.findBy({ maCauHoi: In(maCauHois) })
       : [];
     const luaChonIds = luaChons.map((lc) => lc.maLuaChon);
     const dapAns = luaChonIds.length
-      ? await this.dataSource
-          .getRepository(DapAn)
-          .findBy({ maLuaChon: In(luaChonIds) })
+      ? await dapAnRepo.findBy({ maLuaChon: In(luaChonIds) })
       : [];
     const dapAnDungIds = new Set(dapAns.map((d) => d.maLuaChon));
 
@@ -423,7 +476,7 @@ export class ExamSessionsService {
       dapAnDungTheoCau.set(lc.maCauHoi, set);
     }
 
-    const daChonTheoCau = await this.mapDaTraLoi(maBaiLam);
+    const daChonTheoCau = await this.mapDaTraLoi(maBaiLam, em);
 
     let soCauDung = 0;
     for (const maCauHoi of maCauHois) {

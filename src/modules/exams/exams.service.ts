@@ -130,6 +130,19 @@ export class ExamsService {
         'Không thể công khai đề thi chưa có câu hỏi',
       );
 
+    // Không cho hạ đề về nháp khi đã dùng tạo phòng thi:
+    // sẽ mở khóa lại câu hỏi và phá vỡ tính toàn vẹn của các phòng thi liên quan.
+    if (
+      trangThai === TrangThaiBaiThi.NHAP &&
+      baiThi.trangThai === TrangThaiBaiThi.CONG_KHAI
+    ) {
+      const soPhong = await this.phongThiRepo.countBy({ maBaiThi: id });
+      if (soPhong > 0)
+        throw new BadRequestException(
+          'Không thể ẩn đề thi đã được dùng để tạo phòng thi',
+        );
+    }
+
     baiThi.trangThai = trangThai;
     return this.baiThiRepo.save(baiThi);
   }

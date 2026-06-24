@@ -15,6 +15,7 @@ import { DapAn } from '../questions/entities/dap-an.entity';
 import { QueryResultDto } from './dto/query-result.dto';
 import { QueryResultStatsDto } from './dto/query-result-stats.dto';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
+import { CurrentUserPayload } from '../../common/interfaces/current-user.interface';
 
 @Injectable()
 export class ResultsService {
@@ -53,7 +54,7 @@ export class ResultsService {
   }
 
   // Danh sách kết quả theo đề thi / phòng thi (GV chỉ xem đề của mình, Admin xem tất cả)
-  async getResults(query: QueryResultDto, user: any) {
+  async getResults(query: QueryResultDto, user: CurrentUserPayload) {
     const { page = 1, limit = 20, maBaiThi, maPhongThi, maNguoiDung } = query;
 
     const qb = this.ketQuaRepo
@@ -92,7 +93,7 @@ export class ResultsService {
   }
 
   // Chi tiết 1 kết quả: từng câu hỏi kèm đáp án đã chọn vs đáp án đúng
-  async getResultDetail(maKetQua: number, user: any) {
+  async getResultDetail(maKetQua: number, user: CurrentUserPayload) {
     const ketQua = await this.ketQuaRepo.findOne({ where: { maKetQua } });
     if (!ketQua) throw new NotFoundException('Không tìm thấy kết quả');
 
@@ -146,7 +147,7 @@ export class ResultsService {
   }
 
   // Thống kê điểm theo đề thi / phòng thi / môn học
-  async getStats(query: QueryResultStatsDto, user: any) {
+  async getStats(query: QueryResultStatsDto, user: CurrentUserPayload) {
     const { maBaiThi, maPhongThi, maMonHoc } = query;
 
     const qb = this.ketQuaRepo
@@ -180,7 +181,7 @@ export class ResultsService {
 
   // ----- Helpers -----
 
-  private async kiemTraQuyenXem(ketQua: KetQua, user: any) {
+  private async kiemTraQuyenXem(ketQua: KetQua, user: CurrentUserPayload) {
     if (user.vaiTro === VaiTro.QUAN_TRI_VIEN) return;
     if (user.vaiTro === VaiTro.HOC_SINH) {
       if (ketQua.maNguoiDung !== user.maNguoiDung)

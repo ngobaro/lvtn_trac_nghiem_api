@@ -220,11 +220,11 @@ export class AuthService {
         };
         return {
             accessToken: this.jwtService.sign(payload, {
-                secret: process.env.JWT_SECRET || 'secret',
+                secret: process.env.JWT_SECRET,
                 expiresIn: process.env.JWT_EXPIRES_IN || '15m',
             } as any),
             refreshToken: this.jwtService.sign(payload, {
-                secret: process.env.JWT_REFRESH_SECRET || 'refresh_secret',
+                secret: process.env.JWT_REFRESH_SECRET,
                 expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
             } as any),
         };

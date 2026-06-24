@@ -37,7 +37,7 @@ export class ExamSessionsGateway
       }
 
       const payload = await this.jwtService.verifyAsync(token, {
-        secret: process.env.JWT_SECRET || 'secret',
+        secret: process.env.JWT_SECRET,
       });
       const maNguoiDung = payload.sub;
 

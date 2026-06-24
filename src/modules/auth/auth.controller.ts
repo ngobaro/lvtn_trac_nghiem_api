@@ -8,6 +8,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import type { CurrentUserPayload } from '../../common/interfaces/current-user.interface';
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
 import { VaiTro } from 'src/common/enums/vai-tro.enum';
 
@@ -77,14 +78,14 @@ export class AuthController {
   @Patch('change-password')
   @UseGuards(JwtAuthGuard)
   @ResponseMessage('Đổi mật khẩu thành công')
-  changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
+  changePassword(@CurrentUser() user: CurrentUserPayload, @Body() dto: ChangePasswordDto) {
     return this.authService.changePassword(user.maNguoiDung, dto.matKhauHienTai, dto.matKhauMoi);
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ResponseMessage('Lấy thông tin thành công')
-  getMe(@CurrentUser() user: any) { 
+  getMe(@CurrentUser() user: CurrentUserPayload) { 
     return this.authService.getMe(user.maNguoiDung); 
   }
 }
