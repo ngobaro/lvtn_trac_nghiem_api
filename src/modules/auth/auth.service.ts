@@ -197,7 +197,11 @@ export class AuthService {
         const xacThuc = await this.xacThucRepo.findOne({
             where: { maNguoiDung, nhaCungCap: NhaCungCap.LOCAL }
         });
-        if (!xacThuc) throw new BadRequestException('Tài khoản không dùng đăng nhập local');
+        if (!xacThuc?.matKhau) {
+            throw new BadRequestException(
+                'Tài khoản đăng nhập bằng Google không thể đổi mật khẩu',
+            );
+        }
 
         const ok = await bcrypt.compare(matKhauHienTai, xacThuc.matKhau);
         if (!ok) throw new BadRequestException('Mật khẩu hiện tại không đúng');
@@ -208,7 +212,16 @@ export class AuthService {
     }
 
     async getMe(maNguoiDung: number) {
-        return this.nguoiDungRepo.findOne({ where: { maNguoiDung } });
+        const nguoiDung = await this.nguoiDungRepo.findOne({ where: { maNguoiDung } });
+        if (!nguoiDung) return null;
+
+        // Chỉ tài khoản có xác thực LOCAL (đã đặt mật khẩu) mới đổi được mật khẩu.
+        // Tài khoản đăng nhập Google không có bản ghi LOCAL -> coMatKhau = false.
+        const xacThucLocal = await this.xacThucRepo.findOne({
+            where: { maNguoiDung, nhaCungCap: NhaCungCap.LOCAL },
+        });
+
+        return { ...nguoiDung, coMatKhau: !!xacThucLocal?.matKhau };
     }
 
     private generateTokens(user: any) {
