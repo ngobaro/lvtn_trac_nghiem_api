@@ -1,5 +1,7 @@
 import { Controller, Post, Get, Body, UseGuards, Patch, Req, Res } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
+import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
@@ -14,7 +16,10 @@ import { VaiTro } from 'src/common/enums/vai-tro.enum';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private authService: AuthService) { }
+  constructor(
+    private authService: AuthService,
+    private configService: ConfigService,
+  ) { }
 
   @Post('register')
   @ResponseMessage('Đăng ký thành công')
@@ -35,8 +40,24 @@ export class AuthController {
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  async googleCallback(@Req() req: any) {
-    return this.authService.loginGoogle(req.user);
+  async googleCallback(@Req() req: any, @Res() res: Response) {
+    const result: any = await this.authService.loginGoogle(req.user);
+
+    const frontendUrl =
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+
+    const params = new URLSearchParams();
+    if (result.needSelectRole) {
+      // User mới -> frontend hiển thị form chọn vai trò rồi gọi /auth/google/confirm-role
+      params.set('needSelectRole', 'true');
+      params.set('tempToken', result.tempToken);
+    } else {
+      // User cũ -> đăng nhập
+      params.set('accessToken', result.accessToken);
+      params.set('refreshToken', result.refreshToken);
+    }
+
+    return res.redirect(`${frontendUrl}/auth/google/callback?${params.toString()}`);
   }
 
   @Post('google/confirm-role')
