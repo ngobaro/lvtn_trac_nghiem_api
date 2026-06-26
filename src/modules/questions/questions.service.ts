@@ -6,6 +6,7 @@ import { LuaChon } from './entities/lua-chon.entity';
 import { DapAn } from './entities/dap-an.entity';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { QueryQuestionDto } from './dto/query-question.dto';
 import { LoaiCauHoi } from '../../common/enums/loai-cau-hoi.enum';
 import { AppwriteService } from '../../common/services/appwrite.service';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
@@ -26,15 +27,29 @@ export class QuestionsService {
     ) { }
 
     // taoBoi = undefined => admin, không filter theo người tạo
-    async findAll(page = 1, limit = 20, taoBoi?: number) {
-        const where = taoBoi !== undefined ? { taoBoi } : {};
+    async findAll(query: QueryQuestionDto, taoBoi?: number) {
+        const { page = 1, limit = 20, search, maMonHoc, doKho, loaiCauHoi } = query;
 
-        const [items, total] = await this.cauHoiRepo.findAndCount({
-            where: where,
-            skip: (page - 1) * limit,
-            take: limit,
-            relations: { luaChons: true },
-        });
+        const qb = this.cauHoiRepo
+            .createQueryBuilder('ch')
+            .leftJoinAndSelect('ch.luaChons', 'lc');
+
+        if (taoBoi !== undefined)
+            qb.andWhere('ch.taoBoi = :taoBoi', { taoBoi });
+        if (search)
+            qb.andWhere('ch.noiDung LIKE :s', { s: `%${search}%` });
+        if (maMonHoc !== undefined)
+            qb.andWhere('ch.maMonHoc = :maMonHoc', { maMonHoc });
+        if (doKho !== undefined)
+            qb.andWhere('ch.doKho = :doKho', { doKho });
+        if (loaiCauHoi !== undefined)
+            qb.andWhere('ch.loaiCauHoi = :loaiCauHoi', { loaiCauHoi });
+
+        const [items, total] = await qb
+            .orderBy('ch.maCauHoi', 'DESC')
+            .skip((page - 1) * limit)
+            .take(limit)
+            .getManyAndCount();
         return { items, total, page, limit };
     }
 
