@@ -76,6 +76,10 @@ export class ExamRoomsService {
   async create(dto: CreateExamRoomDto, taoBoi: number) {
     const moLuc = new Date(dto.moLuc);
     const dongLuc = new Date(dto.dongLuc);
+    if (moLuc < new Date())
+      throw new BadRequestException(
+        'Thời gian mở phòng không được ở quá khứ',
+      );
     if (moLuc >= dongLuc)
       throw new BadRequestException(
         'Thời gian mở phòng phải trước thời gian đóng phòng',
