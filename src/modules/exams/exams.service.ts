@@ -11,6 +11,7 @@ import { CauHoi } from '../questions/entities/cau-hoi.entity';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { ExamQuestionOrderDto } from './dto/exam-question-order.dto';
+import { QueryExamDto } from './dto/query-exam.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
@@ -24,14 +25,20 @@ export class ExamsService {
   ) {}
 
   // taoBoi = undefined => admin, không filter theo người tạo
-  async findAll(page = 1, limit = 20, taoBoi?: number) {
-    const where = taoBoi !== undefined ? { taoBoi } : {};
+  async findAll(query: QueryExamDto, taoBoi?: number) {
+    const { page = 1, limit = 20, maMonHoc, trangThai } = query;
 
-    const [items, total] = await this.baiThiRepo.findAndCount({
-      where,
-      skip: (page - 1) * limit,
-      take: limit,
-    });
+    const qb = this.baiThiRepo.createQueryBuilder('bt');
+    if (taoBoi !== undefined) qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi });
+    if (maMonHoc !== undefined)
+      qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+    if (trangThai) qb.andWhere('bt.trangThai = :trangThai', { trangThai });
+
+    const [items, total] = await qb
+      .orderBy('bt.maBaiThi', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
     return { items, total, page, limit };
   }
 
