@@ -18,7 +18,7 @@ import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
 import { CreateExamRoomDto } from './dto/create-exam-room.dto';
 import { UpdateExamRoomStatusDto } from './dto/update-exam-room-status.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { QueryExamRoomDto } from './dto/query-exam-room.dto';
 
 @Controller('exam-rooms')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -29,12 +29,12 @@ export class ExamRoomsController {
   @Get()
   @ResponseMessage('Lấy danh sách phòng thi thành công')
   findAll(
-    @Query() query: PaginationDto,
+    @Query() query: QueryExamRoomDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
     const taoBoi =
       user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
-    return this.examRoomsService.findAll(query.page, query.limit, taoBoi);
+    return this.examRoomsService.findAll(query, taoBoi);
   }
 
   @Get(':id')
