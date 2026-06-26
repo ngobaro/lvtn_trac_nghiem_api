@@ -1,0 +1,17 @@
+import { IsEnum, IsInt, IsOptional } from 'class-validator';
+import { Type } from 'class-transformer';
+import { TrangThaiBaiThi } from '../../../common/enums/trang-thai-bai-thi.enum';
+import { PaginationDto } from '../../../common/dto/pagination.dto';
+
+export class QueryExamDto extends PaginationDto {
+  // Lọc đề thi theo môn học.
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  maMonHoc?: number;
+
+  // Lọc theo trạng thái (nhap | cong_khai).
+  @IsOptional()
+  @IsEnum(TrangThaiBaiThi)
+  trangThai?: TrangThaiBaiThi;
+}

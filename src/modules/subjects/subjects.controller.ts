@@ -9,7 +9,7 @@ import type { CurrentUserPayload } from 'src/common/interfaces/current-user.inte
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
-import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { QuerySubjectDto } from './dto/query-subject.dto';
 
 @Controller('subjects')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,9 +21,9 @@ export class SubjectsController {
 
     @Get()
     @ResponseMessage('Lấy danh sách môn học thành công')
-    findAll(@Query() query: PaginationDto, @CurrentUser() user: CurrentUserPayload) {
+    findAll(@Query() query: QuerySubjectDto, @CurrentUser() user: CurrentUserPayload) {
         const maNguoiDung = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
-        return this.subjectsService.findAll(query.page, query.limit, maNguoiDung);
+        return this.subjectsService.findAll(query, maNguoiDung);
     }
 
     @Get(':id')
