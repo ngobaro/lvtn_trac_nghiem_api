@@ -45,4 +45,8 @@ export class BaiThi {
 
   @OneToMany(() => CauHoiBaiThi, (chbt) => chbt.baiThi, { cascade: true })
   cauHoiBaiThis: CauHoiBaiThi[];
+
+  // Cờ runtime (không map cột): đề đã được dùng (có phòng thi hoặc đã có bài làm)
+  // => khóa thay đổi danh sách câu hỏi. Được gán ở findOne.
+  daSuDung?: boolean;
 }
