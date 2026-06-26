@@ -4,6 +4,7 @@ import { MonHoc } from './entities/mon-hoc.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
+import { QuerySubjectDto } from './dto/query-subject.dto';
 import { CauHoi } from '../questions/entities/cau-hoi.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 
@@ -16,14 +17,25 @@ export class SubjectsService {
     ) { }
 
     // maNguoiDung = undefined => admin, lấy toàn bộ
-    async findAll(page = 1, limit = 20, maNguoiDung?: number) {
-        const where = maNguoiDung !== undefined ? { maNguoiDung } : {};
+    async findAll(query: QuerySubjectDto, maNguoiDung?: number) {
+        const { page = 1, limit = 20, search, laHoatDong } = query;
 
-        const [items, total] = await this.monHocRepo.findAndCount({
-            where: where,
-            skip: (page - 1) * limit,
-            take: limit,
-        });
+        const qb = this.monHocRepo.createQueryBuilder('m');
+        if (maNguoiDung !== undefined)
+            qb.andWhere('m.maNguoiDung = :maNguoiDung', { maNguoiDung });
+        if (laHoatDong !== undefined)
+            qb.andWhere('m.laHoatDong = :laHoatDong', { laHoatDong });
+        if (search)
+            qb.andWhere(
+                '(m.tenMonHoc LIKE :s OR m.maDinhDanhMon LIKE :s)',
+                { s: `%${search}%` },
+            );
+
+        const [items, total] = await qb
+            .orderBy('m.maMonHoc', 'DESC')
+            .skip((page - 1) * limit)
+            .take(limit)
+            .getManyAndCount();
         return { items, total, page, limit };
     }
 
