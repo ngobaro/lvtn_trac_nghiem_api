@@ -1,15 +1,18 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Repository, DataSource } from 'typeorm';
 import { MonHoc } from './entities/mon-hoc.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
+import { CauHoi } from '../questions/entities/cau-hoi.entity';
+import { BaiThi } from '../exams/entities/bai-thi.entity';
 
 @Injectable()
 export class SubjectsService {
     constructor(
         @InjectRepository(MonHoc)
-        private readonly monHocRepo: Repository<MonHoc>
+        private readonly monHocRepo: Repository<MonHoc>,
+        private readonly dataSource: DataSource,
     ) { }
 
     // maNguoiDung = undefined => admin, lấy toàn bộ
@@ -46,6 +49,24 @@ export class SubjectsService {
 
     async remove(id: number, maNguoiDung?: number) {
         const monHoc = await this.findOne(id, maNguoiDung);
+
+        // Chặn xóa khi còn câu hỏi / đề thi tham chiếu (tránh lỗi khóa ngoại 500).
+        const soCauHoi = await this.dataSource
+            .getRepository(CauHoi)
+            .countBy({ maMonHoc: id });
+        if (soCauHoi > 0)
+            throw new BadRequestException(
+                'Không thể xóa môn học khi vẫn còn câu hỏi thuộc môn này',
+            );
+
+        const soBaiThi = await this.dataSource
+            .getRepository(BaiThi)
+            .countBy({ maMonHoc: id });
+        if (soBaiThi > 0)
+            throw new BadRequestException(
+                'Không thể xóa môn học khi vẫn còn đề thi thuộc môn này',
+            );
+
         await this.monHocRepo.remove(monHoc);
         return null;
     }
