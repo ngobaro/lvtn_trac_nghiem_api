@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { CauHoi } from './entities/cau-hoi.entity';
 import { LuaChon } from './entities/lua-chon.entity';
 import { DapAn } from './entities/dap-an.entity';
@@ -47,7 +47,18 @@ export class QuestionsService {
             relations: { luaChons: true },
         });
         if (!cauHoi) throw new NotFoundException('Câu hỏi không tồn tại');
+
+        await this.danhDauDapAnDung(cauHoi.luaChons);
         return cauHoi;
+    }
+
+    // Đính cờ laDapAnDung cho từng lựa chọn dựa trên bảng DAP_AN.
+    private async danhDauDapAnDung(luaChons: LuaChon[] = []) {
+        const ids = luaChons.map((lc) => lc.maLuaChon);
+        if (ids.length === 0) return;
+        const dapAns = await this.dapAnRepo.findBy({ maLuaChon: In(ids) });
+        const dungSet = new Set(dapAns.map((d) => d.maLuaChon));
+        luaChons.forEach((lc) => (lc.laDapAnDung = dungSet.has(lc.maLuaChon)));
     }
 
     async create(dto: CreateQuestionDto, taoBoi: number) {
