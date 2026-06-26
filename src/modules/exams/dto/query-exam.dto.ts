@@ -1,9 +1,14 @@
-import { IsEnum, IsInt, IsOptional } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { TrangThaiBaiThi } from '../../../common/enums/trang-thai-bai-thi.enum';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 
 export class QueryExamDto extends PaginationDto {
+  // Tìm theo tiêu đề đề thi.
+  @IsOptional()
+  @IsString()
+  search?: string;
+
   // Lọc đề thi theo môn học.
   @IsOptional()
   @Type(() => Number)

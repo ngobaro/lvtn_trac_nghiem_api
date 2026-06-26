@@ -6,9 +6,11 @@ import { LuaChon } from './entities/lua-chon.entity';
 import { DapAn } from './entities/dap-an.entity';
 import { CreateQuestionDto } from './dto/create-question.dto';
 import { UpdateQuestionDto } from './dto/update-question.dto';
+import { QueryQuestionDto } from './dto/query-question.dto';
 import { LoaiCauHoi } from '../../common/enums/loai-cau-hoi.enum';
 import { AppwriteService } from '../../common/services/appwrite.service';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
+import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 
@@ -25,15 +27,29 @@ export class QuestionsService {
     ) { }
 
     // taoBoi = undefined => admin, không filter theo người tạo
-    async findAll(page = 1, limit = 20, taoBoi?: number) {
-        const where = taoBoi !== undefined ? { taoBoi } : {};
+    async findAll(query: QueryQuestionDto, taoBoi?: number) {
+        const { page = 1, limit = 20, search, maMonHoc, doKho, loaiCauHoi } = query;
 
-        const [items, total] = await this.cauHoiRepo.findAndCount({
-            where: where,
-            skip: (page - 1) * limit,
-            take: limit,
-            relations: { luaChons: true },
-        });
+        const qb = this.cauHoiRepo
+            .createQueryBuilder('ch')
+            .leftJoinAndSelect('ch.luaChons', 'lc');
+
+        if (taoBoi !== undefined)
+            qb.andWhere('ch.taoBoi = :taoBoi', { taoBoi });
+        if (search)
+            qb.andWhere('ch.noiDung LIKE :s', { s: `%${search}%` });
+        if (maMonHoc !== undefined)
+            qb.andWhere('ch.maMonHoc = :maMonHoc', { maMonHoc });
+        if (doKho !== undefined)
+            qb.andWhere('ch.doKho = :doKho', { doKho });
+        if (loaiCauHoi !== undefined)
+            qb.andWhere('ch.loaiCauHoi = :loaiCauHoi', { loaiCauHoi });
+
+        const [items, total] = await qb
+            .orderBy('ch.maCauHoi', 'DESC')
+            .skip((page - 1) * limit)
+            .take(limit)
+            .getManyAndCount();
         return { items, total, page, limit };
     }
 
@@ -99,6 +115,7 @@ export class QuestionsService {
     async update(id: number, dto: UpdateQuestionDto, taoBoi?: number) {
         await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
+        await this.kiemTraCauHoiDaThi(id);
         return this.dataSource.transaction(async (em) => {
             await em.update(CauHoi, id, {
                 noiDung: dto.noiDung,
@@ -127,8 +144,16 @@ export class QuestionsService {
     async remove(id: number, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
+        await this.kiemTraCauHoiDaThi(id);
         const anhCu = cauHoi.hinhAnh;
-        await this.cauHoiRepo.remove(cauHoi);
+
+        await this.dataSource.transaction(async (em) => {
+            // Gỡ câu hỏi khỏi các đề thi (chỉ đề nháp)
+            // để tránh lỗi khóa ngoại từ CAU_HOI_BAI_THI.
+            await em.delete(CauHoiBaiThi, { maCauHoi: id });
+            // Xóa câu hỏi (DB cascade LUA_CHON, DAP_AN).
+            await em.remove(cauHoi);
+        });
 
         // Xóa ảnh trên Appwrite sau khi đã xóa câu hỏi
         if (anhCu) {
@@ -182,6 +207,18 @@ export class QuestionsService {
         if (daDung > 0)
             throw new BadRequestException(
                 'Câu hỏi đã thuộc đề thi đã công khai, không thể sửa hoặc xóa',
+            );
+    }
+
+    // Câu hỏi đã xuất hiện trong bài làm của học sinh (CAU_HOI_BAI_LAM) thì khóa
+    // sửa/xóa để giữ toàn vẹn dữ liệu kết quả đã chấm (và tránh lỗi khóa ngoại).
+    private async kiemTraCauHoiDaThi(maCauHoi: number) {
+        const daThi = await this.dataSource
+            .getRepository(CauHoiBaiLam)
+            .countBy({ maCauHoi });
+        if (daThi > 0)
+            throw new BadRequestException(
+                'Câu hỏi đã được sử dụng trong bài thi của học sinh, không thể sửa hoặc xóa',
             );
     }
 }

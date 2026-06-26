@@ -15,6 +15,7 @@ import { QueryExamDto } from './dto/query-exam.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
+import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 
 @Injectable()
 export class ExamsService {
@@ -26,10 +27,11 @@ export class ExamsService {
 
   // taoBoi = undefined => admin, không filter theo người tạo
   async findAll(query: QueryExamDto, taoBoi?: number) {
-    const { page = 1, limit = 20, maMonHoc, trangThai } = query;
+    const { page = 1, limit = 20, search, maMonHoc, trangThai } = query;
 
     const qb = this.baiThiRepo.createQueryBuilder('bt');
     if (taoBoi !== undefined) qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi });
+    if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search}%` });
     if (maMonHoc !== undefined)
       qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
     if (trangThai) qb.andWhere('bt.trangThai = :trangThai', { trangThai });
@@ -53,7 +55,22 @@ export class ExamsService {
       order: { cauHoiBaiThis: { thuTu: 'ASC' } },
     });
     if (!baiThi) throw new NotFoundException('Đề thi không tồn tại');
+
+    // Gán cờ daSuDung để FE khóa việc thay đổi câu hỏi.
+    const { daThi, coPhong } = await this.kiemTraDaSuDung(id);
+    baiThi.daSuDung = daThi || coPhong;
     return baiThi;
+  }
+
+  // Đề được coi là "đã sử dụng" khi đã có bài làm của học sinh (daThi)
+  // hoặc đã được dùng để tạo phòng thi (coPhong). Khi đó danh sách câu hỏi
+  // phải được đóng băng để giữ toàn vẹn phòng thi & kết quả đã chấm.
+  private async kiemTraDaSuDung(maBaiThi: number) {
+    const [soBaiLam, soPhong] = await Promise.all([
+      this.dataSource.getRepository(BaiLam).countBy({ maBaiThi }),
+      this.phongThiRepo.countBy({ maBaiThi }),
+    ]);
+    return { daThi: soBaiLam > 0, coPhong: soPhong > 0 };
   }
 
   async create(dto: CreateExamDto, taoBoi: number) {
@@ -92,6 +109,17 @@ export class ExamsService {
 
   async update(id: number, dto: UpdateExamDto, taoBoi?: number) {
     await this.findOne(id, taoBoi);
+
+    // Khóa toàn bộ chỉnh sửa khi đề đã được sử dụng (để giữ toàn vẹn phòng thi & kết quả).
+    const { daThi, coPhong } = await this.kiemTraDaSuDung(id);
+    if (daThi)
+      throw new BadRequestException(
+        'Không thể sửa đề thi đã có học sinh làm bài',
+      );
+    if (coPhong)
+      throw new BadRequestException(
+        'Không thể sửa đề thi đã được dùng để tạo phòng thi',
+      );
 
     if (dto.cauHois) await this.validateCauHois(dto.cauHois, taoBoi);
 
