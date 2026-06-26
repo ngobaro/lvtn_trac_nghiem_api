@@ -19,7 +19,10 @@ export class ResultsController {
   @Get('me')
   @Roles(VaiTro.HOC_SINH)
   @ResponseMessage('Lấy lịch sử thi thành công')
-  getMyResults(@Query() query: PaginationDto, @CurrentUser() user: CurrentUserPayload) {
+  getMyResults(
+    @Query() query: PaginationDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
     return this.resultsService.getMyResults(
       user.maNguoiDung,
       query.page,
@@ -30,21 +33,30 @@ export class ResultsController {
   @Get('stats')
   @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy thống kê kết quả thành công')
-  getStats(@Query() query: QueryResultStatsDto, @CurrentUser() user: CurrentUserPayload) {
+  getStats(
+    @Query() query: QueryResultStatsDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
     return this.resultsService.getStats(query, user);
   }
 
   @Get()
   @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy danh sách kết quả thành công')
-  getResults(@Query() query: QueryResultDto, @CurrentUser() user: CurrentUserPayload) {
+  getResults(
+    @Query() query: QueryResultDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
     return this.resultsService.getResults(query, user);
   }
 
   @Get(':id')
   @Roles(VaiTro.HOC_SINH, VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy chi tiết kết quả thành công')
-  getResultDetail(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
+  getResultDetail(
+    @Param('id') id: number,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
     return this.resultsService.getResultDetail(+id, user);
   }
 }

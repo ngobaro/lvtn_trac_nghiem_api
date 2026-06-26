@@ -30,7 +30,10 @@ export class ExamsController {
 
   @Get()
   @ResponseMessage('Lấy danh sách đề thi thành công')
-  findAll(@Query() query: PaginationDto, @CurrentUser() user: CurrentUserPayload) {
+  findAll(
+    @Query() query: PaginationDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
     const taoBoi =
       user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
     return this.examsService.findAll(query.page, query.limit, taoBoi);

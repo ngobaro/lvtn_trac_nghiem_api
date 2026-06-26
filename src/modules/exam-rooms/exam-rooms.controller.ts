@@ -28,7 +28,10 @@ export class ExamRoomsController {
 
   @Get()
   @ResponseMessage('Lấy danh sách phòng thi thành công')
-  findAll(@Query() query: PaginationDto, @CurrentUser() user: CurrentUserPayload) {
+  findAll(
+    @Query() query: PaginationDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
     const taoBoi =
       user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
     return this.examRoomsService.findAll(query.page, query.limit, taoBoi);
@@ -53,7 +56,10 @@ export class ExamRoomsController {
   @Post()
   @Roles(VaiTro.GIAO_VIEN)
   @ResponseMessage('Tạo phòng thi thành công')
-  create(@Body() dto: CreateExamRoomDto, @CurrentUser() user: CurrentUserPayload) {
+  create(
+    @Body() dto: CreateExamRoomDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
     return this.examRoomsService.create(dto, user.maNguoiDung);
   }
 
