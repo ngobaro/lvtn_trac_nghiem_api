@@ -9,6 +9,7 @@ import { UpdateQuestionDto } from './dto/update-question.dto';
 import { LoaiCauHoi } from '../../common/enums/loai-cau-hoi.enum';
 import { AppwriteService } from '../../common/services/appwrite.service';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
+import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 
@@ -99,6 +100,7 @@ export class QuestionsService {
     async update(id: number, dto: UpdateQuestionDto, taoBoi?: number) {
         await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
+        await this.kiemTraCauHoiDaThi(id);
         return this.dataSource.transaction(async (em) => {
             await em.update(CauHoi, id, {
                 noiDung: dto.noiDung,
@@ -127,8 +129,16 @@ export class QuestionsService {
     async remove(id: number, taoBoi?: number) {
         const cauHoi = await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
+        await this.kiemTraCauHoiDaThi(id);
         const anhCu = cauHoi.hinhAnh;
-        await this.cauHoiRepo.remove(cauHoi);
+
+        await this.dataSource.transaction(async (em) => {
+            // Gỡ câu hỏi khỏi các đề thi (chỉ đề nháp)
+            // để tránh lỗi khóa ngoại từ CAU_HOI_BAI_THI.
+            await em.delete(CauHoiBaiThi, { maCauHoi: id });
+            // Xóa câu hỏi (DB cascade LUA_CHON, DAP_AN).
+            await em.remove(cauHoi);
+        });
 
         // Xóa ảnh trên Appwrite sau khi đã xóa câu hỏi
         if (anhCu) {
@@ -182,6 +192,18 @@ export class QuestionsService {
         if (daDung > 0)
             throw new BadRequestException(
                 'Câu hỏi đã thuộc đề thi đã công khai, không thể sửa hoặc xóa',
+            );
+    }
+
+    // Câu hỏi đã xuất hiện trong bài làm của học sinh (CAU_HOI_BAI_LAM) thì khóa
+    // sửa/xóa để giữ toàn vẹn dữ liệu kết quả đã chấm (và tránh lỗi khóa ngoại).
+    private async kiemTraCauHoiDaThi(maCauHoi: number) {
+        const daThi = await this.dataSource
+            .getRepository(CauHoiBaiLam)
+            .countBy({ maCauHoi });
+        if (daThi > 0)
+            throw new BadRequestException(
+                'Câu hỏi đã được sử dụng trong bài thi của học sinh, không thể sửa hoặc xóa',
             );
     }
 }
