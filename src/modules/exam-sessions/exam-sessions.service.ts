@@ -49,12 +49,19 @@ export class ExamSessionsService {
       where: { maThamGiaPhong: dto.maThamGiaPhong },
     });
     if (!phong) throw new NotFoundException('Mã tham gia phòng không đúng');
-    if (phong.trangThai !== TrangThaiPhongThi.DANG_DIEN_RA)
-      throw new BadRequestException('Phòng thi chưa mở hoặc đã đóng');
 
+    // Cho vào phòng theo thời gian (mở->đóng), đồng thời tôn trọng thao tác thủ công:
+    // GV đóng sớm (DA_DONG) thì chặn; GV mở sớm (DANG_DIEN_RA) thì cho vào trước giờ mở.
     const now = new Date();
+    if (phong.trangThai === TrangThaiPhongThi.DA_DONG)
+      throw new BadRequestException('Phòng thi đã đóng');
     if (now > phong.dongLuc)
       throw new BadRequestException('Phòng thi đã hết thời gian');
+    if (
+      now < phong.moLuc &&
+      phong.trangThai !== TrangThaiPhongThi.DANG_DIEN_RA
+    )
+      throw new BadRequestException('Phòng thi chưa mở');
 
     // Đã có bài làm trong phòng này?
     const baiLamCu = await this.baiLamRepo.findOne({
