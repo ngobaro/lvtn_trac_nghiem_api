@@ -9,7 +9,7 @@ import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
 import { QueryResultDto } from './dto/query-result.dto';
 import { QueryResultStatsDto } from './dto/query-result-stats.dto';
-import { PaginationDto } from '../../common/dto/pagination.dto';
+import { QueryMyResultDto } from './dto/query-my-result.dto';
 
 @Controller('results')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -20,14 +20,17 @@ export class ResultsController {
   @Roles(VaiTro.HOC_SINH)
   @ResponseMessage('Lấy lịch sử thi thành công')
   getMyResults(
-    @Query() query: PaginationDto,
+    @Query() query: QueryMyResultDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.resultsService.getMyResults(
-      user.maNguoiDung,
-      query.page,
-      query.limit,
-    );
+    return this.resultsService.getMyResults(user.maNguoiDung, query);
+  }
+
+  @Get('me/subjects')
+  @Roles(VaiTro.HOC_SINH)
+  @ResponseMessage('Lấy danh sách môn đã thi thành công')
+  getMySubjects(@CurrentUser() user: CurrentUserPayload) {
+    return this.resultsService.getMySubjects(user.maNguoiDung);
   }
 
   @Get('stats')
