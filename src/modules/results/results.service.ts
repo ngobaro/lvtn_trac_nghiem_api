@@ -8,6 +8,9 @@ import { Repository, DataSource, In } from 'typeorm';
 import { KetQua } from './entities/ket-qua.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
+import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
+import { MonHoc } from '../subjects/entities/mon-hoc.entity';
+import { QueryMyResultDto } from './dto/query-my-result.dto';
 import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from '../exam-sessions/entities/nguoi-dung-tra-loi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
@@ -24,33 +27,60 @@ export class ResultsService {
     private dataSource: DataSource,
   ) {}
 
-  // Lịch sử thi của học sinh hiện tại
-  async getMyResults(maNguoiDung: number, page = 1, limit = 20) {
+  // Lịch sử thi của học sinh hiện tại (tìm theo tên đề + lọc theo môn)
+  async getMyResults(maNguoiDung: number, query: QueryMyResultDto = {}) {
+    const { page = 1, limit = 20, search, maMonHoc } = query;
+
     const qb = this.ketQuaRepo
       .createQueryBuilder('kq')
       .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
       .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
-      .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung })
-      .select([
-        'kq.maKetQua AS maKetQua',
-        'kq.maBaiLam AS maBaiLam',
-        'kq.maBaiThi AS maBaiThi',
-        'kq.diemSo AS diemSo',
-        'kq.tongSoCau AS tongSoCau',
-        'kq.soCauDung AS soCauDung',
-        'bt.tieuDe AS tieuDe',
-        'bl.maPhongThi AS maPhongThi',
-        'bl.thoiGianBatDau AS thoiGianBatDau',
-        'bl.thoiGianKetThuc AS thoiGianNop',
-        'bl.trangThai AS trangThaiBaiLam',
-      ])
+      .leftJoin(PhongThi, 'pt', 'pt.maPhongThi = bl.maPhongThi')
+      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = bt.maMonHoc')
+      .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung });
+
+    if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search}%` });
+    if (maMonHoc) qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+
+    const countQb = qb.clone();
+
+    qb.select([
+      'kq.maKetQua AS maKetQua',
+      'kq.maBaiLam AS maBaiLam',
+      'kq.maBaiThi AS maBaiThi',
+      'kq.diemSo AS diemSo',
+      'kq.tongSoCau AS tongSoCau',
+      'kq.soCauDung AS soCauDung',
+      'bt.tieuDe AS tieuDe',
+      'bt.maMonHoc AS maMonHoc',
+      'mh.tenMonHoc AS tenMonHoc',
+      'bl.maPhongThi AS maPhongThi',
+      'bl.thoiGianBatDau AS thoiGianBatDau',
+      'bl.thoiGianKetThuc AS thoiGianNop',
+      'bl.trangThai AS trangThaiBaiLam',
+      'pt.dongLuc AS dongLuc',
+    ])
       .orderBy('kq.maKetQua', 'DESC')
       .offset((page - 1) * limit)
       .limit(limit);
 
     const items = await qb.getRawMany();
-    const total = await this.ketQuaRepo.countBy({ maNguoiDung });
+    const total = await countQb.getCount();
     return { items, total, page, limit };
+  }
+
+  // Danh sách môn học mà học sinh đã có kết quả (cho bộ lọc lịch sử thi)
+  async getMySubjects(maNguoiDung: number) {
+    return this.ketQuaRepo
+      .createQueryBuilder('kq')
+      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
+      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = bt.maMonHoc')
+      .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung })
+      .select('bt.maMonHoc', 'maMonHoc')
+      .addSelect('mh.tenMonHoc', 'tenMonHoc')
+      .distinct(true)
+      .orderBy('mh.tenMonHoc', 'ASC')
+      .getRawMany();
   }
 
   // Danh sách kết quả theo đề thi / phòng thi (GV chỉ xem đề của mình, Admin xem tất cả)
@@ -186,6 +216,16 @@ export class ResultsService {
     if (user.vaiTro === VaiTro.HOC_SINH) {
       if (ketQua.maNguoiDung !== user.maNguoiDung)
         throw new ForbiddenException('Bạn không có quyền xem kết quả này');
+      // Chưa tới giờ đóng phòng -> chưa cho HS xem chi tiết để tránh lộ đáp án
+      // cho các thí sinh khác còn đang làm bài trong phòng.
+      const baiLam = await this.dataSource.getRepository(BaiLam).findOne({
+        where: { maBaiLam: ketQua.maBaiLam },
+        relations: { phongThi: true },
+      });
+      if (baiLam?.phongThi && new Date() < baiLam.phongThi.dongLuc)
+        throw new ForbiddenException(
+          'Chi tiết bài làm chỉ xem được sau khi phòng thi đóng',
+        );
       return;
     }
     // Giáo viên: chỉ xem kết quả của đề thi do mình tạo
