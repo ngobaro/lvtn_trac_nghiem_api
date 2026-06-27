@@ -161,17 +161,8 @@ export class ExamRoomsService {
 
   async create(dto: CreateExamRoomDto, taoBoi: number) {
     const moLuc = new Date(dto.moLuc);
-    const dongLuc = new Date(dto.dongLuc);
     if (moLuc < new Date())
-      throw new BadRequestException(
-        'Thời gian mở phòng không được ở quá khứ',
-      );
-    if (moLuc >= dongLuc)
-      throw new BadRequestException(
-        'Thời gian mở phòng phải trước thời gian đóng phòng',
-      );
-    if (dongLuc <= new Date())
-      throw new BadRequestException('Thời gian đóng phòng phải ở tương lai');
+      throw new BadRequestException('Thời gian mở phòng không được ở quá khứ');
 
     // Đề thi phải tồn tại, thuộc quyền sở hữu và đã công khai mới được tạo phòng
     const baiThi = await this.baiThiRepo.findOne({
@@ -186,12 +177,9 @@ export class ExamRoomsService {
         'Chỉ đề thi đã công khai mới được tạo phòng thi',
       );
 
-    // Thi đồng loạt: mọi thí sinh kết thúc lúc đóng phòng. Để thí sinh vào đúng giờ mở
-    // có đủ thời lượng đề, cửa sổ [mở, đóng] phải >= thời lượng đề thi.
-    if (dongLuc.getTime() - moLuc.getTime() < baiThi.thoiGianLamBai * 60000)
-      throw new BadRequestException(
-        'Khoảng thời gian từ lúc mở phòng đến lúc đóng phòng phải lớn hơn hoặc bằng thời lượng của đề thi.',
-      );
+    // Thi đồng loạt: giờ đóng phòng do hệ thống tự tính = giờ mở + thời lượng đề thi.
+    // Nhờ đó thí sinh vào đúng giờ mở luôn có đủ thời lượng làm bài.
+    const dongLuc = new Date(moLuc.getTime() + baiThi.thoiGianLamBai * 60000);
 
     // Chế độ ngẫu nhiên cần số câu chọn hợp lệ
     if (dto.cheDoCauHoi === CheDoCauHoi.NGAU_NHIEN) {

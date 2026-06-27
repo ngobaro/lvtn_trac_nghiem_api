@@ -14,11 +14,9 @@ export class CreateExamRoomDto {
   @Min(1)
   soCauChon?: number;
 
+  // Giờ kết thúc do hệ thống tự tính = moLuc + thời lượng đề thi (không nhận từ client).
   @IsDateString()
   moLuc: string;
-
-  @IsDateString()
-  dongLuc: string;
 
   @IsOptional()
   @IsInt()
