@@ -186,6 +186,13 @@ export class ExamRoomsService {
         'Chỉ đề thi đã công khai mới được tạo phòng thi',
       );
 
+    // Thi đồng loạt: mọi thí sinh kết thúc lúc đóng phòng. Để thí sinh vào đúng giờ mở
+    // có đủ thời lượng đề, cửa sổ [mở, đóng] phải >= thời lượng đề thi.
+    if (dongLuc.getTime() - moLuc.getTime() < baiThi.thoiGianLamBai * 60000)
+      throw new BadRequestException(
+        'Khoảng thời gian từ lúc mở phòng đến lúc đóng phòng phải lớn hơn hoặc bằng thời lượng của đề thi.',
+      );
+
     // Chế độ ngẫu nhiên cần số câu chọn hợp lệ
     if (dto.cheDoCauHoi === CheDoCauHoi.NGAU_NHIEN) {
       const tongCauHoi = await this.dataSource
