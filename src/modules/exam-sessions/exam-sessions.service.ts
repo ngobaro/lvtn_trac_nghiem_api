@@ -178,6 +178,8 @@ export class ExamSessionsService {
       maBaiLam: baiLam.maBaiLam,
       maPhongThi: baiLam.maPhongThi,
       maBaiThi: baiLam.maBaiThi,
+      tenDeThi: baiLam.baiThi.tieuDe,
+      tenMonHoc: baiLam.baiThi.monHoc?.tenMonHoc ?? null,
       trangThai: baiLam.trangThai,
       thoiGianBatDau: baiLam.thoiGianBatDau,
       hanNop: baiLam.phongThi.dongLuc,
@@ -379,7 +381,7 @@ export class ExamSessionsService {
   private async layBaiLamCuaToi(maBaiLam: number, maNguoiDung: number) {
     const baiLam = await this.baiLamRepo.findOne({
       where: { maBaiLam },
-      relations: { phongThi: true },
+      relations: { phongThi: true, baiThi: { monHoc: true } },
     });
     if (!baiLam) throw new NotFoundException('Không tìm thấy bài làm');
     if (baiLam.maNguoiDung !== maNguoiDung)
