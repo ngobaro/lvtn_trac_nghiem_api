@@ -8,6 +8,7 @@ import { Repository, DataSource, In } from 'typeorm';
 import { KetQua } from './entities/ket-qua.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
+import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from '../exam-sessions/entities/nguoi-dung-tra-loi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
@@ -30,6 +31,7 @@ export class ResultsService {
       .createQueryBuilder('kq')
       .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
       .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
+      .leftJoin(PhongThi, 'pt', 'pt.maPhongThi = bl.maPhongThi')
       .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung })
       .select([
         'kq.maKetQua AS maKetQua',
@@ -43,6 +45,7 @@ export class ResultsService {
         'bl.thoiGianBatDau AS thoiGianBatDau',
         'bl.thoiGianKetThuc AS thoiGianNop',
         'bl.trangThai AS trangThaiBaiLam',
+        'pt.dongLuc AS dongLuc',
       ])
       .orderBy('kq.maKetQua', 'DESC')
       .offset((page - 1) * limit)
@@ -186,6 +189,16 @@ export class ResultsService {
     if (user.vaiTro === VaiTro.HOC_SINH) {
       if (ketQua.maNguoiDung !== user.maNguoiDung)
         throw new ForbiddenException('Bạn không có quyền xem kết quả này');
+      // Chưa tới giờ đóng phòng -> chưa cho HS xem chi tiết để tránh lộ đáp án
+      // cho các thí sinh khác còn đang làm bài trong phòng.
+      const baiLam = await this.dataSource.getRepository(BaiLam).findOne({
+        where: { maBaiLam: ketQua.maBaiLam },
+        relations: { phongThi: true },
+      });
+      if (baiLam?.phongThi && new Date() < baiLam.phongThi.dongLuc)
+        throw new ForbiddenException(
+          'Chi tiết bài làm chỉ xem được sau khi phòng thi đóng',
+        );
       return;
     }
     // Giáo viên: chỉ xem kết quả của đề thi do mình tạo
