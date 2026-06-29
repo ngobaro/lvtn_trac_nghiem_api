@@ -13,12 +13,15 @@ import { ExamsModule } from './modules/exams/exams.module';
 import { ExamRoomsModule } from './modules/exam-rooms/exam-rooms.module';
 import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
 import { ResultsModule } from './modules/results/results.module';
+import { CacheModule } from '@nestjs/cache-manager';
+import { redisConfig } from './config/redis.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     TypeOrmModule.forRoot(databaseConfig()),
+    CacheModule.registerAsync(redisConfig()),
 
     AuthModule,
     UsersModule,
