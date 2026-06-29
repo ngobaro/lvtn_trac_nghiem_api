@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
@@ -9,17 +9,20 @@ import { RegisterDto } from './dto/register.dto';
 import { NhaCungCap } from '../../common/enums/nha-cung-cap.enum';
 import { MailService } from './mail.service';
 import { VaiTro } from 'src/common/enums/vai-tro.enum';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 
 @Injectable()
 export class AuthService {
-    // Lưu OTP tạm trong memory (production nên dùng Redis)
-    private otpStore = new Map<string, { otp: string; expires: number }>();
+    // // Lưu OTP tạm trong memory (production nên dùng Redis)
+    // private otpStore = new Map<string, { otp: string; expires: number }>();
+
 
     constructor(
         @InjectRepository(NguoiDung) private nguoiDungRepo: Repository<NguoiDung>,
         @InjectRepository(NhaCungCapXacThuc) private xacThucRepo: Repository<NhaCungCapXacThuc>,
         private jwtService: JwtService,
         private mailService: MailService,
+        @Inject(CACHE_MANAGER) private cacheManager: any,
     ) { }
 
     async register(dto: RegisterDto) {
@@ -159,20 +162,36 @@ export class AuthService {
         return this.generateTokens(nguoiDung);
     }
 
+
+
     async forgotPassword(email: string) {
         const user = await this.nguoiDungRepo.findOne({ where: { email } });
         if (!user) throw new BadRequestException('Email không tồn tại');
 
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
-        this.otpStore.set(email, { otp, expires: Date.now() + 5 * 60 * 1000 });
+
+        //  Lưu OTP vào Redis (không dùng namespace)
+        await this.cacheManager.set(`otp:${email}`, otp, 5 * 60 * 1000);
+
+        // Kiểm tra
+        const check = await this.cacheManager.get(`otp:${email}`);
+        console.log(' OTP stored in Redis:', check);
+        console.log(' Check type:', typeof check);
+
         await this.mailService.sendOtp(email, otp);
-        return null;
+        return { message: 'OTP đã được gửi đến email' };
     }
 
     async verifyOtp(email: string, otp: string) {
-        const record = this.otpStore.get(email);
-        if (!record || record.otp !== otp || Date.now() > record.expires)
-            throw new BadRequestException('OTP không hợp lệ hoặc đã hết hạn');
+        const key = `otp:${email}`;
+        const stored = await this.cacheManager.get(key);
+
+        if (!stored) {
+            throw new BadRequestException('OTP đã hết hạn hoặc không tồn tại');
+        }
+        if (stored !== otp) {
+            throw new BadRequestException('OTP không đúng');
+        }
         return null;
     }
 
@@ -189,8 +208,10 @@ export class AuthService {
 
         xacThuc.matKhau = await bcrypt.hash(matKhauMoi, 10);
         await this.xacThucRepo.save(xacThuc);
-        this.otpStore.delete(email);
-        return null;
+
+        await this.cacheManager.del(`otp:${email}`);
+
+        return { message: 'Đặt lại mật khẩu thành công' };
     }
 
     async changePassword(maNguoiDung: number, matKhauHienTai: string, matKhauMoi: string) {
