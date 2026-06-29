@@ -223,6 +223,18 @@ export class ExamRoomsService {
         `Không thể chuyển trạng thái từ "${phongThi.trangThai}" sang "${trangThai}"`,
       );
 
+    // GV bấm "bắt đầu ngay" cho phòng chưa tới giờ mở: dời cửa sổ thi về hiện tại
+    // (moLuc = now, dongLuc = now + thời lượng đề). Nếu không dời, thời gian còn lại
+    // vẫn tính theo dongLuc cũ (= moLuc dự kiến + thời lượng) nên thí sinh được làm
+    // dài hơn thời lượng đề. Chỉ áp dụng khi mở SỚM (now < moLuc).
+    const now = new Date();
+    if (trangThai === TrangThaiPhongThi.DANG_DIEN_RA && now < phongThi.moLuc) {
+      phongThi.moLuc = now;
+      phongThi.dongLuc = new Date(
+        now.getTime() + phongThi.baiThi.thoiGianLamBai * 60000,
+      );
+    }
+
     phongThi.trangThai = trangThai;
     const daLuu = await this.phongThiRepo.save(phongThi);
 
