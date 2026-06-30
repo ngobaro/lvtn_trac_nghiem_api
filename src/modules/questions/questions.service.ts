@@ -9,6 +9,9 @@ import { UpdateQuestionDto } from './dto/update-question.dto';
 import { QueryQuestionDto } from './dto/query-question.dto';
 import { LoaiCauHoi } from '../../common/enums/loai-cau-hoi.enum';
 import { AppwriteService } from '../../common/services/appwrite.service';
+import { GeminiService } from './services/gemini.service';
+import { DocumentParserService } from './services/document-parser.service';
+import { EntityManager } from 'typeorm';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
 import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
@@ -24,6 +27,8 @@ export class QuestionsService {
         @InjectRepository(DapAn) private dapAnRepo: Repository<DapAn>,
         private dataSource: DataSource,
         private appwriteService: AppwriteService,
+        private geminiService: GeminiService,
+        private documentParserService: DocumentParserService,
     ) { }
 
     // taoBoi = undefined => admin, không filter theo người tạo
@@ -78,38 +83,80 @@ export class QuestionsService {
     }
 
     async create(dto: CreateQuestionDto, taoBoi: number) {
+        return this.dataSource.transaction((em) =>
+            this.taoTrongTransaction(em, dto, taoBoi),
+        );
+    }
+
+    // Đọc file (Word/PDF) -> trích xuất câu hỏi bằng AI.
+    // CHỈ trả về dữ liệu nháp cho FE xem trước/chỉnh sửa, KHÔNG ghi vào DB.
+    async nhapTuFile(file: Express.Multer.File) {
+        const vanBan = await this.documentParserService.docFromBuffer(file);
+        const cauHois = await this.geminiService.trichXuatCauHoi(vanBan);
+        if (cauHois.length === 0)
+            throw new BadRequestException(
+                'Không tìm thấy câu hỏi trắc nghiệm nào trong file',
+            );
+        return { cauHois };
+    }
+
+    // Lưu hàng loạt câu hỏi (sau khi người dùng xác nhận ở bước xem trước).
+    // Toàn bộ chạy trong 1 transaction: lỗi 1 câu thì rollback tất cả.
+    async createNhieu(cauHois: CreateQuestionDto[], taoBoi: number) {
+        return this.dataSource.transaction(async (em) => {
+            const ketQua: CauHoi[] = [];
+            for (let i = 0; i < cauHois.length; i++) {
+                try {
+                    ketQua.push(await this.taoTrongTransaction(em, cauHois[i], taoBoi));
+                } catch (e) {
+                    const lyDo =
+                        e instanceof BadRequestException
+                            ? (e.getResponse() as any)?.message || e.message
+                            : (e as Error).message;
+                    throw new BadRequestException(`Câu ${i + 1}: ${lyDo}`);
+                }
+            }
+            return { soLuong: ketQua.length };
+        });
+    }
+
+    // Validate số đáp án đúng theo loại + ghi 1 câu hỏi (kèm lựa chọn, đáp án)
+    // trong phạm vi transaction được truyền vào. Dùng chung cho create & createNhieu.
+    private async taoTrongTransaction(
+        em: EntityManager,
+        dto: CreateQuestionDto,
+        taoBoi: number,
+    ) {
         const dung = dto.luaChons.filter((lc) => lc.laDapAnDung);
         if (dto.loaiCauHoi === LoaiCauHoi.MOT_DAP_AN && dung.length !== 1)
             throw new BadRequestException('Câu hỏi 1 đáp án phải có đúng 1 đáp án đúng');
         if (dto.loaiCauHoi === LoaiCauHoi.NHIEU_DAP_AN && dung.length < 2)
             throw new BadRequestException('Câu hỏi nhiều đáp án phải có ít nhất 2 đáp án đúng');
 
-        return this.dataSource.transaction(async (em) => {
-            const cauHoi = await em.save(CauHoi, em.create(CauHoi, {
-                noiDung: dto.noiDung,
-                maMonHoc: dto.maMonHoc,
-                doKho: dto.doKho,
-                loaiCauHoi: dto.loaiCauHoi,
-                taoBoi,
-            }));
+        const cauHoi = await em.save(CauHoi, em.create(CauHoi, {
+            noiDung: dto.noiDung,
+            maMonHoc: dto.maMonHoc,
+            doKho: dto.doKho,
+            loaiCauHoi: dto.loaiCauHoi,
+            taoBoi,
+        }));
 
-            const savedLuaChons = await Promise.all(
-                dto.luaChons.map((lc) =>
-                    em.save(LuaChon, em.create(LuaChon, {
-                        maCauHoi: cauHoi.maCauHoi,
-                        noiDung: lc.noiDung,
-                    })),
-                ),
-            );
+        const savedLuaChons = await Promise.all(
+            dto.luaChons.map((lc) =>
+                em.save(LuaChon, em.create(LuaChon, {
+                    maCauHoi: cauHoi.maCauHoi,
+                    noiDung: lc.noiDung,
+                })),
+            ),
+        );
 
-            for (let i = 0; i < savedLuaChons.length; i++) {
-                if (dto.luaChons[i].laDapAnDung) {
-                    await em.save(DapAn, { maLuaChon: savedLuaChons[i].maLuaChon });
-                }
+        for (let i = 0; i < savedLuaChons.length; i++) {
+            if (dto.luaChons[i].laDapAnDung) {
+                await em.save(DapAn, { maLuaChon: savedLuaChons[i].maLuaChon });
             }
+        }
 
-            return cauHoi;
-        });
+        return cauHoi;
     }
 
     async update(id: number, dto: UpdateQuestionDto, taoBoi?: number) {
