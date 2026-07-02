@@ -9,8 +9,10 @@ import { KetQua } from './entities/ket-qua.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
+import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
 import { MonHoc } from '../subjects/entities/mon-hoc.entity';
 import { QueryMyResultDto } from './dto/query-my-result.dto';
+import { QueryResultRoomDto } from './dto/query-result-room.dto';
 import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from '../exam-sessions/entities/nguoi-dung-tra-loi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
@@ -207,6 +209,74 @@ export class ResultsService {
       diemCaoNhat: soLuotThi ? Number(raw.diemCaoNhat) : 0,
       diemThapNhat: soLuotThi ? Number(raw.diemThapNhat) : 0,
     };
+  }
+
+  // Thống kê gom nhóm theo phòng thi (GV chỉ xem phòng của mình, Admin xem tất cả).
+  async getRoomStats(query: QueryResultRoomDto, user: CurrentUserPayload) {
+    const { page = 1, limit = 20, maBaiThi, maMonHoc, search } = query;
+
+    const phongThiRepo = this.dataSource.getRepository(PhongThi);
+
+    // QueryBuilder gốc dùng chung cho cả count (số phòng) và lấy dữ liệu.
+    const baseQb = phongThiRepo
+      .createQueryBuilder('pt')
+      .leftJoin('pt.baiThi', 'bt');
+
+    if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
+      baseQb.andWhere('pt.taoBoi = :taoBoi', { taoBoi: user.maNguoiDung });
+    if (maBaiThi) baseQb.andWhere('pt.maBaiThi = :maBaiThi', { maBaiThi });
+    if (maMonHoc) baseQb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+    if (search)
+      baseQb.andWhere('(pt.maThamGiaPhong LIKE :s OR bt.tieuDe LIKE :s)', {
+        s: `%${search}%`,
+      });
+
+    const total = await baseQb.clone().getCount();
+
+    const qb = baseQb
+      .leftJoin(BaiLam, 'bl', 'bl.maPhongThi = pt.maPhongThi')
+      .leftJoin(KetQua, 'kq', 'kq.maBaiLam = bl.maBaiLam')
+      .select('pt.maPhongThi', 'maPhongThi')
+      .addSelect('pt.maThamGiaPhong', 'maThamGiaPhong')
+      .addSelect('bt.tieuDe', 'tieuDe')
+      .addSelect('COUNT(DISTINCT kq.maKetQua)', 'soLuotNop')
+      .addSelect('AVG(kq.diemSo)', 'diemTrungBinh')
+      .addSelect('MAX(kq.diemSo)', 'diemCaoNhat')
+      .addSelect('MIN(kq.diemSo)', 'diemThapNhat')
+      // Mẫu số: số học sinh đã vào phòng — subquery tương quan để không nhân dòng.
+      .addSelect(
+        (sub) =>
+          sub
+            .select('COUNT(*)')
+            .from(ThanhVienPhong, 'tv')
+            .where('tv.maPhongThi = pt.maPhongThi'),
+        'tongThanhVien',
+      )
+      .groupBy('pt.maPhongThi')
+      .addGroupBy('pt.maThamGiaPhong')
+      .addGroupBy('bt.tieuDe')
+      .orderBy('pt.maPhongThi', 'DESC')
+      .offset((page - 1) * limit)
+      .limit(limit);
+
+    const raw = await qb.getRawMany();
+    const items = raw.map((r) => {
+      const soLuotNop = Number(r.soLuotNop) || 0;
+      return {
+        maPhongThi: Number(r.maPhongThi),
+        maThamGiaPhong: r.maThamGiaPhong,
+        tieuDe: r.tieuDe,
+        soLuotNop,
+        tongThanhVien: Number(r.tongThanhVien) || 0,
+        diemTrungBinh: soLuotNop
+          ? Math.round(Number(r.diemTrungBinh) * 100) / 100
+          : 0,
+        diemCaoNhat: soLuotNop ? Number(r.diemCaoNhat) : 0,
+        diemThapNhat: soLuotNop ? Number(r.diemThapNhat) : 0,
+      };
+    });
+
+    return { items, total, page, limit };
   }
 
   // ----- Helpers -----
