@@ -9,6 +9,7 @@ import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
 import { QueryResultDto } from './dto/query-result.dto';
 import { QueryResultStatsDto } from './dto/query-result-stats.dto';
+import { QueryResultRoomDto } from './dto/query-result-room.dto';
 import { QueryMyResultDto } from './dto/query-my-result.dto';
 
 @Controller('results')
@@ -41,6 +42,16 @@ export class ResultsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.resultsService.getStats(query, user);
+  }
+
+  @Get('rooms')
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
+  @ResponseMessage('Lấy thống kê theo phòng thành công')
+  getRoomStats(
+    @Query() query: QueryResultRoomDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.resultsService.getRoomStats(query, user);
   }
 
   @Get()
