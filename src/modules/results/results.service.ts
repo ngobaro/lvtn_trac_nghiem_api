@@ -9,6 +9,7 @@ import { KetQua } from './entities/ket-qua.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
+import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
 import { MonHoc } from '../subjects/entities/mon-hoc.entity';
 import { QueryMyResultDto } from './dto/query-my-result.dto';
@@ -92,7 +93,8 @@ export class ResultsService {
     const qb = this.ketQuaRepo
       .createQueryBuilder('kq')
       .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
-      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam');
+      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
+      .leftJoin(NguoiDung, 'nd', 'nd.maNguoiDung = kq.maNguoiDung');
 
     if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
       qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi: user.maNguoiDung });
@@ -108,6 +110,8 @@ export class ResultsService {
       'kq.maBaiLam AS maBaiLam',
       'kq.maBaiThi AS maBaiThi',
       'kq.maNguoiDung AS maNguoiDung',
+      'nd.tenNguoiDung AS tenNguoiDung',
+      'nd.email AS email',
       'kq.diemSo AS diemSo',
       'kq.tongSoCau AS tongSoCau',
       'kq.soCauDung AS soCauDung',
