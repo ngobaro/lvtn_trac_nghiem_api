@@ -27,7 +27,7 @@ export class ExamsService {
 
   // taoBoi = undefined => admin, không filter theo người tạo
   async findAll(query: QueryExamDto, taoBoi?: number) {
-    const { page = 1, limit = 20, search, maMonHoc, trangThai } = query;
+    const { page = 1, limit = 10, search, maMonHoc, trangThai } = query;
 
     const qb = this.baiThiRepo.createQueryBuilder('bt');
     if (taoBoi !== undefined) qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi });

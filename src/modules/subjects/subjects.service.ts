@@ -18,7 +18,7 @@ export class SubjectsService {
 
     // maNguoiDung = undefined => admin, lấy toàn bộ
     async findAll(query: QuerySubjectDto, maNguoiDung?: number) {
-        const { page = 1, limit = 20, search, laHoatDong } = query;
+        const { page = 1, limit = 10, search, laHoatDong } = query;
 
         const qb = this.monHocRepo.createQueryBuilder('m');
         if (maNguoiDung !== undefined)

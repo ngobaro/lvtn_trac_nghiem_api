@@ -9,7 +9,7 @@ export class UsersService {
   constructor(@InjectRepository(NguoiDung) private repo: Repository<NguoiDung>) {}
 
   async findAll(query: QueryUserDto) {
-    const { page = 1, limit = 20, vaiTro, laHoatDong, search } = query;
+    const { page = 1, limit = 10, vaiTro, laHoatDong, search } = query;
     const qb = this.repo.createQueryBuilder('u');
     if (vaiTro) qb.andWhere('u.vaiTro = :vaiTro', { vaiTro });
     if (laHoatDong !== undefined) qb.andWhere('u.laHoatDong = :laHoatDong', { laHoatDong });

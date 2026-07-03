@@ -33,7 +33,7 @@ export class QuestionsService {
 
     // taoBoi = undefined => admin, không filter theo người tạo
     async findAll(query: QueryQuestionDto, taoBoi?: number) {
-        const { page = 1, limit = 20, search, maMonHoc, doKho, loaiCauHoi } = query;
+        const { page = 1, limit = 10, search, maMonHoc, doKho, loaiCauHoi } = query;
 
         const qb = this.cauHoiRepo
             .createQueryBuilder('ch')

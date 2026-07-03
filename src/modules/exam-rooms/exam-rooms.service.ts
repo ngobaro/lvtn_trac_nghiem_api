@@ -50,7 +50,7 @@ export class ExamRoomsService {
 
   // taoBoi = undefined => admin, không filter theo người tạo
   async findAll(query: QueryExamRoomDto, taoBoi?: number) {
-    const { page = 1, limit = 20, search, maMonHoc, trangThai } = query;
+    const { page = 1, limit = 10, search, maMonHoc, trangThai } = query;
 
     // Đồng bộ trạng thái theo thời gian trước khi truy vấn để lọc/hiển thị đúng.
     await this.dongBoNhieuPhong(taoBoi);
