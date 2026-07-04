@@ -127,6 +127,8 @@ export class QuestionsService {
         dto: CreateQuestionDto,
         taoBoi: number,
     ) {
+        await this.kiemTraTrungNoiDung(dto.noiDung, dto.maMonHoc, undefined, em);
+
         const dung = dto.luaChons.filter((lc) => lc.laDapAnDung);
         if (dto.loaiCauHoi === LoaiCauHoi.MOT_DAP_AN && dung.length !== 1)
             throw new BadRequestException('Câu hỏi 1 đáp án phải có đúng 1 đáp án đúng');
@@ -160,9 +162,12 @@ export class QuestionsService {
     }
 
     async update(id: number, dto: UpdateQuestionDto, taoBoi?: number) {
-        await this.findOne(id, taoBoi);
+        const cauHoiCu = await this.findOne(id, taoBoi);
         await this.kiemTraCauHoiDaDung(id);
         await this.kiemTraCauHoiDaThi(id);
+        const noiDungMoi = dto.noiDung ?? cauHoiCu.noiDung;
+        const maMonHocMoi = dto.maMonHoc ?? cauHoiCu.maMonHoc;
+        await this.kiemTraTrungNoiDung(noiDungMoi, maMonHocMoi, id);
         return this.dataSource.transaction(async (em) => {
             await em.update(CauHoi, id, {
                 noiDung: dto.noiDung,
@@ -266,6 +271,27 @@ export class QuestionsService {
         if (daThi > 0)
             throw new BadRequestException(
                 'Câu hỏi đã được sử dụng trong bài thi của học sinh, không thể sửa hoặc xóa',
+            );
+    }
+
+    // Chặn trùng nội dung câu hỏi trong cùng một môn học.
+    // So khớp không phân biệt hoa/thường noiDung đã được trim ở DTO.
+    // boQuaId: bỏ qua chính câu đang cập nhật. em: dùng khi gọi trong transaction.
+    private async kiemTraTrungNoiDung(
+        noiDung: string,
+        maMonHoc: number,
+        boQuaId?: number,
+        em?: EntityManager,
+    ) {
+        const repo = em ? em.getRepository(CauHoi) : this.cauHoiRepo;
+        const qb = repo
+            .createQueryBuilder('ch')
+            .where('ch.maMonHoc = :maMonHoc', { maMonHoc })
+            .andWhere('ch.noiDung = :noiDung', { noiDung });
+        if (boQuaId) qb.andWhere('ch.maCauHoi != :boQuaId', { boQuaId });
+        if (await qb.getCount())
+            throw new BadRequestException(
+                'Nội dung câu hỏi đã tồn tại trong môn học này',
             );
     }
 }
