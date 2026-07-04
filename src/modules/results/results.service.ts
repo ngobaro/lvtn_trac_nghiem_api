@@ -32,7 +32,7 @@ export class ResultsService {
 
   // Lịch sử thi của học sinh hiện tại (tìm theo tên đề + lọc theo môn)
   async getMyResults(maNguoiDung: number, query: QueryMyResultDto = {}) {
-    const { page = 1, limit = 20, search, maMonHoc } = query;
+    const { page = 1, limit = 10, search, maMonHoc } = query;
 
     const qb = this.ketQuaRepo
       .createQueryBuilder('kq')
@@ -88,7 +88,7 @@ export class ResultsService {
 
   // Danh sách kết quả theo đề thi / phòng thi (GV chỉ xem đề của mình, Admin xem tất cả)
   async getResults(query: QueryResultDto, user: CurrentUserPayload) {
-    const { page = 1, limit = 20, maBaiThi, maPhongThi, maNguoiDung } = query;
+    const { page = 1, limit = 10, maBaiThi, maPhongThi, maNguoiDung } = query;
 
     const qb = this.ketQuaRepo
       .createQueryBuilder('kq')
@@ -217,7 +217,7 @@ export class ResultsService {
 
   // Thống kê gom nhóm theo phòng thi (GV chỉ xem phòng của mình, Admin xem tất cả).
   async getRoomStats(query: QueryResultRoomDto, user: CurrentUserPayload) {
-    const { page = 1, limit = 20, maBaiThi, maMonHoc, search } = query;
+    const { page = 1, limit = 10, maBaiThi, maMonHoc, search } = query;
 
     const phongThiRepo = this.dataSource.getRepository(PhongThi);
 
