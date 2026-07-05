@@ -12,9 +12,6 @@ export class MonHoc {
   @Column({ length: 100 })
   tenMonHoc: string;
 
-  @Column({ length: 20, nullable: true })
-  maDinhDanhMon: string;
-
   @Column({ type: 'text', nullable: true })
   moTa: string;
 
