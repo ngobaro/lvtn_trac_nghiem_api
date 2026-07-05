@@ -10,12 +10,10 @@ import { Repository, DataSource } from 'typeorm';
 import { PhongThi } from './entities/phong-thi.entity';
 import { ThanhVienPhong } from './entities/thanh-vien-phong.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
-import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
 import { CreateExamRoomDto } from './dto/create-exam-room.dto';
 import { QueryExamRoomDto } from './dto/query-exam-room.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
-import { CheDoCauHoi } from '../../common/enums/che-do-cau-hoi.enum';
 import { ExamSessionsService } from '../exam-sessions/exam-sessions.service';
 
 // Các bước chuyển trạng thái phòng thi hợp lệ
@@ -181,25 +179,11 @@ export class ExamRoomsService {
     // Nhờ đó thí sinh vào đúng giờ mở luôn có đủ thời lượng làm bài.
     const dongLuc = new Date(moLuc.getTime() + baiThi.thoiGianLamBai * 60000);
 
-    // Chế độ ngẫu nhiên cần số câu chọn hợp lệ
-    if (dto.cheDoCauHoi === CheDoCauHoi.NGAU_NHIEN) {
-      const tongCauHoi = await this.dataSource
-        .getRepository(CauHoiBaiThi)
-        .countBy({ maBaiThi: dto.maBaiThi });
-      if (!dto.soCauChon)
-        throw new BadRequestException('Chế độ ngẫu nhiên phải có số câu chọn');
-      if (dto.soCauChon > tongCauHoi)
-        throw new BadRequestException(
-          'Số câu chọn vượt quá số câu hỏi của đề thi',
-        );
-    }
-
     const maThamGiaPhong = await this.generateMaThamGiaPhong();
 
     const phongThi = this.phongThiRepo.create({
       maBaiThi: dto.maBaiThi,
       cheDoCauHoi: dto.cheDoCauHoi,
-      soCauChon: dto.soCauChon,
       moLuc,
       dongLuc,
       soNguoiThamGia: dto.soNguoiThamGia,

@@ -399,11 +399,8 @@ export class ExamSessionsService {
     phong: PhongThi,
   ): CauHoiBaiThi[] {
     if (phong.cheDoCauHoi === CheDoCauHoi.THEO_THU_TU) return dsCauHoi;
-
-    const daXao = this.xaoTron(dsCauHoi);
-    if (phong.cheDoCauHoi === CheDoCauHoi.NGAU_NHIEN && phong.soCauChon)
-      return daXao.slice(0, phong.soCauChon);
-    return daXao;
+    // XAO_TRON (và mọi giá trị cũ như 'ngau_nhien' đã bỏ) -> đảo thứ tự toàn bộ.
+    return this.xaoTron(dsCauHoi);
   }
 
   private xaoTron<T>(arr: T[]): T[] {

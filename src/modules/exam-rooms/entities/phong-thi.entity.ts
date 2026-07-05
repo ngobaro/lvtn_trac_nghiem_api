@@ -29,9 +29,6 @@ export class PhongThi {
   @Column({ type: 'enum', enum: CheDoCauHoi })
   cheDoCauHoi: CheDoCauHoi;
 
-  @Column({ type: 'int', nullable: true })
-  soCauChon: number;
-
   @Column({ type: 'datetime' })
   moLuc: Date;
 
