@@ -14,7 +14,6 @@ import { ExamQuestionOrderDto } from './dto/exam-question-order.dto';
 import { QueryExamDto } from './dto/query-exam.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
-import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 
 @Injectable()
@@ -156,6 +155,17 @@ export class ExamsService {
   async updateStatus(id: number, trangThai: TrangThaiBaiThi, taoBoi?: number) {
     const baiThi = await this.findOne(id, taoBoi);
 
+    // "Đã sử dụng" do hệ thống tự đặt khi tạo phòng — không cho client tự đặt.
+    if (trangThai === TrangThaiBaiThi.DA_SU_DUNG)
+      throw new BadRequestException(
+        'Trạng thái "Đã sử dụng" do hệ thống tự đặt khi tạo phòng thi',
+      );
+    // Đề đã sử dụng thì không đổi trạng thái được nữa.
+    if (baiThi.trangThai === TrangThaiBaiThi.DA_SU_DUNG)
+      throw new BadRequestException(
+        'Không thể đổi trạng thái đề thi đã sử dụng',
+      );
+
     // Chỉ cho công khai đề thi đã có câu hỏi (đề công khai mới được đưa vào phòng thi)
     if (
       trangThai === TrangThaiBaiThi.CONG_KHAI &&
@@ -185,18 +195,11 @@ export class ExamsService {
   async remove(id: number, taoBoi?: number) {
     const baiThi = await this.findOne(id, taoBoi);
 
-    // Không cho xóa đề thi khi còn phòng thi đang hoạt động (đang chờ / đang diễn ra)
-    const phongHoatDong = await this.phongThiRepo.countBy({
-      maBaiThi: id,
-      trangThai: In([
-        TrangThaiPhongThi.DANG_CHO,
-        TrangThaiPhongThi.DANG_DIEN_RA,
-      ]),
-    });
-    if (phongHoatDong > 0)
-      throw new BadRequestException(
-        'Không thể xóa đề thi khi còn đề thi đang được sử dụng',
-      );
+    // Đề đã dùng để tạo phòng thi thì không cho xóa (giữ toàn vẹn phòng thi,
+    // bài làm & kết quả). Khóa ngoại PHONG_THI/BAI_LAM/KET_QUA cũng sẽ chặn ở DB.
+    const soPhong = await this.phongThiRepo.countBy({ maBaiThi: id });
+    if (soPhong > 0)
+      throw new BadRequestException('Không thể xóa đề thi đã sử dụng');
 
     await this.baiThiRepo.remove(baiThi);
     return null;

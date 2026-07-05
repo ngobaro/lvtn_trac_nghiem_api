@@ -17,7 +17,8 @@ export class PhongThi {
   @PrimaryGeneratedColumn()
   maPhongThi: number;
 
-  @Column()
+  // unique: mỗi đề thi chỉ được dùng cho đúng một phòng thi.
+  @Column({ unique: true })
   maBaiThi: number;
 
   @Column()

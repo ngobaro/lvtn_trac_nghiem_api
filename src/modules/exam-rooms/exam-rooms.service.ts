@@ -170,6 +170,9 @@ export class ExamRoomsService {
       throw new NotFoundException(
         'Đề thi không tồn tại hoặc không thuộc quyền sở hữu',
       );
+    // Mỗi đề thi chỉ được dùng cho đúng MỘT phòng thi.
+    if (baiThi.trangThai === TrangThaiBaiThi.DA_SU_DUNG)
+      throw new BadRequestException('Đề thi này đã được dùng để tạo phòng thi');
     if (baiThi.trangThai !== TrangThaiBaiThi.CONG_KHAI)
       throw new BadRequestException(
         'Chỉ đề thi đã công khai mới được tạo phòng thi',
@@ -181,17 +184,43 @@ export class ExamRoomsService {
 
     const maThamGiaPhong = await this.generateMaThamGiaPhong();
 
-    const phongThi = this.phongThiRepo.create({
-      maBaiThi: dto.maBaiThi,
-      cheDoCauHoi: dto.cheDoCauHoi,
-      moLuc,
-      dongLuc,
-      soNguoiThamGia: dto.soNguoiThamGia,
-      maThamGiaPhong,
-      trangThai: TrangThaiPhongThi.DANG_CHO,
-      taoBoi,
-    });
-    return this.phongThiRepo.save(phongThi);
+    try {
+      // Tạo phòng + đánh dấu đề "đã sử dụng" trong 1 transaction (all-or-nothing).
+      return await this.dataSource.transaction(async (em) => {
+        const phongThi = await em.save(
+          PhongThi,
+          em.create(PhongThi, {
+            maBaiThi: dto.maBaiThi,
+            cheDoCauHoi: dto.cheDoCauHoi,
+            moLuc,
+            dongLuc,
+            soNguoiThamGia: dto.soNguoiThamGia,
+            maThamGiaPhong,
+            trangThai: TrangThaiPhongThi.DANG_CHO,
+            taoBoi,
+          }),
+        );
+        await em.update(BaiThi, dto.maBaiThi, {
+          trangThai: TrangThaiBaiThi.DA_SU_DUNG,
+        });
+        return phongThi;
+      });
+    } catch (e) {
+      // Unique index (maBaiThi) chặn 2 request tạo phòng đồng thời cho cùng đề.
+      if (this.laLoiTrungKhoa(e))
+        throw new BadRequestException(
+          'Đề thi này đã được dùng để tạo phòng thi',
+        );
+      throw e;
+    }
+  }
+
+  private laLoiTrungKhoa(e: any): boolean {
+    return (
+      e?.code === 'ER_DUP_ENTRY' ||
+      e?.errno === 1062 ||
+      e?.driverError?.errno === 1062
+    );
   }
 
   async updateStatus(
