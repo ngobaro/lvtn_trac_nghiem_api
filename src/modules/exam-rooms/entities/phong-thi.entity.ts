@@ -17,7 +17,8 @@ export class PhongThi {
   @PrimaryGeneratedColumn()
   maPhongThi: number;
 
-  @Column()
+  // unique: mỗi đề thi chỉ được dùng cho đúng một phòng thi.
+  @Column({ unique: true })
   maBaiThi: number;
 
   @Column()
@@ -28,9 +29,6 @@ export class PhongThi {
 
   @Column({ type: 'enum', enum: CheDoCauHoi })
   cheDoCauHoi: CheDoCauHoi;
-
-  @Column({ type: 'int', nullable: true })
-  soCauChon: number;
 
   @Column({ type: 'datetime' })
   moLuc: Date;

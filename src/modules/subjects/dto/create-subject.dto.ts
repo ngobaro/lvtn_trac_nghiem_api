@@ -6,10 +6,6 @@ export class CreateSubjectDto {
   tenMonHoc: string;
 
   @IsOptional()
-  @MaxLength(20)
-  maDinhDanhMon?: string;
-
-  @IsOptional()
   @IsString()
   moTa?: string;
 }

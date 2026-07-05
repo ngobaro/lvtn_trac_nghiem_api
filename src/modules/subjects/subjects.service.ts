@@ -26,10 +26,7 @@ export class SubjectsService {
         if (laHoatDong !== undefined)
             qb.andWhere('m.laHoatDong = :laHoatDong', { laHoatDong });
         if (search)
-            qb.andWhere(
-                '(m.tenMonHoc LIKE :s OR m.maDinhDanhMon LIKE :s)',
-                { s: `%${search}%` },
-            );
+            qb.andWhere('m.tenMonHoc LIKE :s', { s: `%${search}%` });
 
         const [items, total] = await qb
             .orderBy('m.maMonHoc', 'DESC')
@@ -50,28 +47,22 @@ export class SubjectsService {
     }
 
     async create(dto: CreateSubjectDto, maNguoiDung: number) {
-        await this.kiemTraTrung(maNguoiDung, dto.tenMonHoc, dto.maDinhDanhMon);
+        await this.kiemTraTrung(maNguoiDung, dto.tenMonHoc);
         const monHoc = this.monHocRepo.create({ ...dto, maNguoiDung });
         return await this.monHocRepo.save(monHoc);
     }
 
     async update(id: number, dto: UpdateSubjectDto, maNguoiDung?: number) {
         const monHoc = await this.findOne(id, maNguoiDung);
-        await this.kiemTraTrung(
-            monHoc.maNguoiDung,
-            dto.tenMonHoc,
-            dto.maDinhDanhMon,
-            id,
-        );
+        await this.kiemTraTrung(monHoc.maNguoiDung, dto.tenMonHoc, id);
         return await this.monHocRepo.save({ ...monHoc, ...dto });
     }
 
-    // Kiểm tra trùng tên môn / mã định danh trong phạm vi cùng người sở hữu.
+    // Kiểm tra trùng tên môn trong phạm vi cùng người sở hữu.
     // boQuaId: bỏ qua chính bản ghi đang cập nhật.
     private async kiemTraTrung(
         maNguoiDung: number,
         tenMonHoc?: string,
-        maDinhDanhMon?: string,
         boQuaId?: number,
     ) {
         if (tenMonHoc) {
@@ -82,16 +73,6 @@ export class SubjectsService {
             if (boQuaId) qb.andWhere('m.maMonHoc != :boQuaId', { boQuaId });
             if (await qb.getCount())
                 throw new BadRequestException('Tên môn học đã tồn tại');
-        }
-
-        if (maDinhDanhMon) {
-            const qb = this.monHocRepo
-                .createQueryBuilder('m')
-                .where('m.maNguoiDung = :maNguoiDung', { maNguoiDung })
-                .andWhere('m.maDinhDanhMon = :maDinhDanhMon', { maDinhDanhMon });
-            if (boQuaId) qb.andWhere('m.maMonHoc != :boQuaId', { boQuaId });
-            if (await qb.getCount())
-                throw new BadRequestException('Mã định danh môn đã tồn tại');
         }
     }
 

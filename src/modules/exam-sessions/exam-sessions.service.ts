@@ -57,10 +57,7 @@ export class ExamSessionsService {
       throw new BadRequestException('Phòng thi đã đóng');
     if (now > phong.dongLuc)
       throw new BadRequestException('Phòng thi đã hết thời gian');
-    if (
-      now < phong.moLuc &&
-      phong.trangThai !== TrangThaiPhongThi.DANG_DIEN_RA
-    )
+    if (now < phong.moLuc && phong.trangThai !== TrangThaiPhongThi.DANG_DIEN_RA)
       throw new BadRequestException('Phòng thi chưa mở');
 
     // Đã có bài làm trong phòng này?
@@ -174,6 +171,7 @@ export class ExamSessionsService {
     const daTraLoi = await this.mapDaTraLoi(maBaiLam);
 
     const daNop = baiLam.trangThai !== TrangThaiBaiLam.DANG_LAM;
+    const xaoTronDapAn = this.nenXaoTronDapAn(baiLam.phongThi.cheDoCauHoi);
     return {
       maBaiLam: baiLam.maBaiLam,
       maPhongThi: baiLam.maPhongThi,
@@ -185,7 +183,9 @@ export class ExamSessionsService {
       hanNop: baiLam.phongThi.dongLuc,
       thoiGianNop: daNop ? baiLam.thoiGianKetThuc : null,
       thoiGianConLaiGiay: this.thoiGianConLai(baiLam),
-      cauHois: cauHois.map((c) => this.dinhDangCauHoi(c, daTraLoi)),
+      cauHois: cauHois.map((c) =>
+        this.dinhDangCauHoi(c, daTraLoi, xaoTronDapAn),
+      ),
     };
   }
 
@@ -195,7 +195,7 @@ export class ExamSessionsService {
     thuTuHienThi: number,
     maNguoiDung: number,
   ) {
-    await this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
+    const baiLam = await this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
 
     const cauHoi = await this.cauHoiBaiLamRepo.findOne({
       where: { maBaiLam, thuTuHienThi },
@@ -204,7 +204,11 @@ export class ExamSessionsService {
     if (!cauHoi) throw new NotFoundException('Không tìm thấy câu hỏi');
 
     const daTraLoi = await this.mapDaTraLoi(maBaiLam);
-    return this.dinhDangCauHoi(cauHoi, daTraLoi);
+    return this.dinhDangCauHoi(
+      cauHoi,
+      daTraLoi,
+      this.nenXaoTronDapAn(baiLam.phongThi.cheDoCauHoi),
+    );
   }
 
   // Lưu/đổi/bỏ câu trả lời cho 1 câu hỏi
@@ -395,17 +399,41 @@ export class ExamSessionsService {
     phong: PhongThi,
   ): CauHoiBaiThi[] {
     if (phong.cheDoCauHoi === CheDoCauHoi.THEO_THU_TU) return dsCauHoi;
-
-    const daXao = this.xaoTron(dsCauHoi);
-    if (phong.cheDoCauHoi === CheDoCauHoi.NGAU_NHIEN && phong.soCauChon)
-      return daXao.slice(0, phong.soCauChon);
-    return daXao;
+    // XAO_TRON (và mọi giá trị cũ như 'ngau_nhien' đã bỏ) -> đảo thứ tự toàn bộ.
+    return this.xaoTron(dsCauHoi);
   }
 
   private xaoTron<T>(arr: T[]): T[] {
     const a = [...arr];
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Chế độ Theo thứ tự & Xáo trộn đều đảo vị trí đáp án của từng câu.
+  private nenXaoTronDapAn(cheDo: CheDoCauHoi): boolean {
+    return cheDo === CheDoCauHoi.THEO_THU_TU || cheDo === CheDoCauHoi.XAO_TRON;
+  }
+
+  // PRNG xác định (mulberry32) từ một hạt giống nguyên.
+  private taoPrng(seed: number): () => number {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // Fisher–Yates với PRNG xác định: cùng hạt giống -> cùng thứ tự (ổn định khi resume).
+  private xaoTronXacDinh<T>(arr: T[], seed: number): T[] {
+    const a = [...arr];
+    const rnd = this.taoPrng(seed);
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
       [a[i], a[j]] = [a[j], a[i]];
     }
     return a;
@@ -436,14 +464,26 @@ export class ExamSessionsService {
     return map;
   }
 
-  private dinhDangCauHoi(c: CauHoiBaiLam, daTraLoi: Map<number, number[]>) {
+  private dinhDangCauHoi(
+    c: CauHoiBaiLam,
+    daTraLoi: Map<number, number[]>,
+    xaoTronDapAn = false,
+  ) {
+    let luaChons = c.cauHoi.luaChons ?? [];
+    // Đảo vị trí đáp án theo (maBaiLam, maCauHoi): mỗi HS một thứ tự cố định,
+    // ổn định qua các lần tải lại. Không ảnh hưởng chấm điểm (chấm theo maLuaChon).
+    if (xaoTronDapAn)
+      luaChons = this.xaoTronXacDinh(
+        luaChons,
+        c.maBaiLam * 1_000_003 + c.maCauHoi,
+      );
     return {
       thuTuHienThi: c.thuTuHienThi,
       maCauHoi: c.maCauHoi,
       noiDung: c.cauHoi.noiDung,
       hinhAnh: c.cauHoi.hinhAnh,
       loaiCauHoi: c.cauHoi.loaiCauHoi,
-      luaChons: (c.cauHoi.luaChons ?? []).map((lc) => ({
+      luaChons: luaChons.map((lc) => ({
         maLuaChon: lc.maLuaChon,
         noiDung: lc.noiDung,
       })),
