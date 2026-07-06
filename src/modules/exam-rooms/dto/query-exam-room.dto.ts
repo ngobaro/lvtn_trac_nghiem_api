@@ -4,16 +4,16 @@ import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { TrangThaiPhongThi } from '../../../common/enums/trang-thai-phong-thi.enum';
 
 export class QueryExamRoomDto extends PaginationDto {
-  // Tìm theo tên đề thi của phòng.
+  // Tìm theo tên phòng thi.
   @IsOptional()
   @IsString()
   search?: string;
 
-  // Lọc theo môn học (của đề thi).
+  // Lọc theo môn-học-kỳ.
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  maMonHoc?: number;
+  maMonHocHocKy?: number;
 
   // Lọc theo trạng thái phòng thi.
   @IsOptional()

@@ -6,11 +6,15 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { PhongThi } from './entities/phong-thi.entity';
+import { PhongThiBaiThi } from './entities/phong-thi-bai-thi.entity';
 import { ThanhVienPhong } from './entities/thanh-vien-phong.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
+import { GhiDanh } from '../enrollments/entities/ghi-danh.entity';
+import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { CreateExamRoomDto } from './dto/create-exam-room.dto';
+import { UpdateExamRoomDto } from './dto/update-exam-room.dto';
 import { QueryExamRoomDto } from './dto/query-exam-room.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
@@ -39,29 +43,33 @@ export class ExamRoomsService {
 
   constructor(
     @InjectRepository(PhongThi) private phongThiRepo: Repository<PhongThi>,
+    @InjectRepository(PhongThiBaiThi)
+    private phongThiBaiThiRepo: Repository<PhongThiBaiThi>,
     @InjectRepository(ThanhVienPhong)
     private thanhVienRepo: Repository<ThanhVienPhong>,
     @InjectRepository(BaiThi) private baiThiRepo: Repository<BaiThi>,
+    @InjectRepository(GhiDanh) private ghiDanhRepo: Repository<GhiDanh>,
+    @InjectRepository(MonHocHocKy) private mhhkRepo: Repository<MonHocHocKy>,
     private dataSource: DataSource,
     private examSessionsService: ExamSessionsService,
   ) {}
 
-  // taoBoi = undefined => admin, không filter theo người tạo
-  async findAll(query: QueryExamRoomDto, taoBoi?: number) {
-    const { page = 1, limit = 10, search, maMonHoc, trangThai } = query;
+  // Admin: danh sách tất cả phòng (đang hoạt động).
+  async findAll(query: QueryExamRoomDto) {
+    const { page = 1, limit = 10, search, maMonHocHocKy, trangThai } = query;
 
-    // Đồng bộ trạng thái theo thời gian trước khi truy vấn để lọc/hiển thị đúng.
-    await this.dongBoNhieuPhong(taoBoi);
+    await this.dongBoNhieuPhong();
 
     const qb = this.phongThiRepo
       .createQueryBuilder('pt')
-      .leftJoinAndSelect('pt.baiThi', 'bt')
-      .leftJoinAndSelect('bt.monHoc', 'mh');
+      .leftJoinAndSelect('pt.monHocHocKy', 'mhhk')
+      .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
+      .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
+      .where('pt.laHoatDong = :hd', { hd: true });
 
-    if (taoBoi !== undefined) qb.andWhere('pt.taoBoi = :taoBoi', { taoBoi });
-    if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search}%` });
-    if (maMonHoc !== undefined)
-      qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+    if (search) qb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search}%` });
+    if (maMonHocHocKy !== undefined)
+      qb.andWhere('pt.maMonHocHocKy = :maMonHocHocKy', { maMonHocHocKy });
     if (trangThai) qb.andWhere('pt.trangThai = :trangThai', { trangThai });
 
     const [items, total] = await qb
@@ -72,18 +80,44 @@ export class ExamRoomsService {
     return { items, total, page, limit };
   }
 
-  // taoBoi = undefined => admin bypass ownership check
-  async findOne(id: number, taoBoi?: number) {
-    const where: any = { maPhongThi: id };
-    if (taoBoi !== undefined) where.taoBoi = taoBoi;
+  // Học sinh: danh sách phòng thuộc các môn-học-kỳ mình đã ghi danh.
+  async findAllForHocSinh(maHocSinh: number) {
+    await this.dongBoNhieuPhong();
 
+    const maMhhk = await this.layMonHocHocKyDaGhiDanh(maHocSinh);
+    if (maMhhk.length === 0) return { items: [], total: 0 };
+
+    const items = await this.phongThiRepo
+      .createQueryBuilder('pt')
+      .leftJoinAndSelect('pt.monHocHocKy', 'mhhk')
+      .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
+      .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
+      .where('pt.laHoatDong = :hd', { hd: true })
+      .andWhere('pt.maMonHocHocKy IN (:...maMhhk)', { maMhhk })
+      .orderBy('pt.moLuc', 'DESC')
+      .getMany();
+    return { items, total: items.length };
+  }
+
+  private async layMonHocHocKyDaGhiDanh(maHocSinh: number): Promise<number[]> {
+    const ds = await this.ghiDanhRepo.find({
+      where: { maHocSinh },
+      select: { maMonHocHocKy: true },
+    });
+    return ds.map((g) => g.maMonHocHocKy);
+  }
+
+  async findOne(id: number) {
     const phongThi = await this.phongThiRepo.findOne({
-      where: where,
-      relations: { baiThi: true, thanhViens: { nguoiDung: true } },
+      where: { maPhongThi: id },
+      relations: {
+        monHocHocKy: { monHoc: true, hocKy: true },
+        phongThiBaiThis: { baiThi: { nguoiTao: true } },
+        thanhViens: { nguoiDung: true },
+      },
     });
     if (!phongThi) throw new NotFoundException('Phòng thi không tồn tại');
 
-    // Đồng bộ trạng thái theo thời gian (chỉ tiến) trước khi trả về.
     await this.dongBoMotPhong(phongThi);
     return phongThi;
   }
@@ -98,8 +132,6 @@ export class ExamRoomsService {
     return TrangThaiPhongThi.DA_DONG;
   }
 
-  // Đồng bộ trạng thái 1 phòng theo thời gian, CHỈ TIẾN (không lùi) để tôn trọng
-  // thao tác thủ công mở/đóng sớm. Cập nhật DB + chốt bài làm khi chuyển sang đã đóng.
   private async dongBoMotPhong(phong: PhongThi): Promise<PhongThi> {
     if (phong.trangThai === TrangThaiPhongThi.DA_DONG) return phong;
     const mucTieu = this.trangThaiTheoThoiGian(phong);
@@ -113,29 +145,23 @@ export class ExamRoomsService {
     return phong;
   }
 
-  // Đồng bộ trạng thái nhiều phòng (theo người tạo, hoặc tất cả nếu undefined).
-  // Mở phòng (dang_cho -> dang_dien_ra) bằng 1 câu UPDATE; đóng phòng quá hạn
-  // (-> da_dong) thì duyệt từng phòng để còn chốt bài làm.
-  private async dongBoNhieuPhong(taoBoi?: number) {
+  private async dongBoNhieuPhong() {
     const now = new Date();
 
-    const moPhong = this.phongThiRepo
+    await this.phongThiRepo
       .createQueryBuilder()
       .update(PhongThi)
       .set({ trangThai: TrangThaiPhongThi.DANG_DIEN_RA })
       .where('trangThai = :cho', { cho: TrangThaiPhongThi.DANG_CHO })
       .andWhere('moLuc <= :now', { now })
-      .andWhere('dongLuc > :now', { now });
-    if (taoBoi !== undefined) moPhong.andWhere('taoBoi = :taoBoi', { taoBoi });
-    await moPhong.execute();
+      .andWhere('dongLuc > :now', { now })
+      .execute();
 
-    const truyVan = this.phongThiRepo
+    const hetHan = await this.phongThiRepo
       .createQueryBuilder('pt')
       .where('pt.trangThai != :dong', { dong: TrangThaiPhongThi.DA_DONG })
-      .andWhere('pt.dongLuc <= :now', { now });
-    if (taoBoi !== undefined)
-      truyVan.andWhere('pt.taoBoi = :taoBoi', { taoBoi });
-    const hetHan = await truyVan.getMany();
+      .andWhere('pt.dongLuc <= :now', { now })
+      .getMany();
     for (const p of hetHan) {
       await this.phongThiRepo.update(p.maPhongThi, {
         trangThai: TrangThaiPhongThi.DA_DONG,
@@ -144,8 +170,6 @@ export class ExamRoomsService {
     }
   }
 
-  // Mỗi phút: tự động chuyển trạng thái phòng theo thời gian cho toàn hệ thống,
-  // để học sinh vào/đóng phòng đúng giờ kể cả khi không ai mở trang quản lý.
   @Cron(CronExpression.EVERY_MINUTE)
   async tuDongDongBoTrangThai() {
     try {
@@ -162,73 +186,98 @@ export class ExamRoomsService {
     if (moLuc < new Date())
       throw new BadRequestException('Thời gian mở phòng không được ở quá khứ');
 
-    // Đề thi phải tồn tại, thuộc quyền sở hữu và đã công khai mới được tạo phòng
-    const baiThi = await this.baiThiRepo.findOne({
-      where: { maBaiThi: dto.maBaiThi, taoBoi },
-    });
-    if (!baiThi)
-      throw new NotFoundException(
-        'Đề thi không tồn tại hoặc không thuộc quyền sở hữu',
+    await this.kiemTraMonHocHocKy(dto.maMonHocHocKy);
+    await this.kiemTraDsBaiThi(dto.maBaiThis, dto.maMonHocHocKy);
+
+    // Thi đồng loạt: giờ đóng phòng = giờ mở + thời lượng làm bài (cấp phòng).
+    const dongLuc = new Date(moLuc.getTime() + dto.thoiGianLamBai * 60000);
+
+    return this.dataSource.transaction(async (em) => {
+      const phongThi = await em.save(
+        PhongThi,
+        em.create(PhongThi, {
+          maMonHocHocKy: dto.maMonHocHocKy,
+          tenPhongThi: dto.tenPhongThi,
+          cheDoCauHoi: dto.cheDoCauHoi,
+          thoiGianLamBai: dto.thoiGianLamBai,
+          moLuc,
+          dongLuc,
+          soNguoiThamGia: dto.soNguoiThamGia,
+          laHoatDong: true,
+          trangThai: TrangThaiPhongThi.DANG_CHO,
+          taoBoi,
+        }),
       );
-    // Mỗi đề thi chỉ được dùng cho đúng MỘT phòng thi.
-    if (baiThi.trangThai === TrangThaiBaiThi.DA_SU_DUNG)
-      throw new BadRequestException('Đề thi này đã được dùng để tạo phòng thi');
-    if (baiThi.trangThai !== TrangThaiBaiThi.CONG_KHAI)
-      throw new BadRequestException(
-        'Chỉ đề thi đã công khai mới được tạo phòng thi',
-      );
 
-    // Thi đồng loạt: giờ đóng phòng do hệ thống tự tính = giờ mở + thời lượng đề thi.
-    // Nhờ đó thí sinh vào đúng giờ mở luôn có đủ thời lượng làm bài.
-    const dongLuc = new Date(moLuc.getTime() + baiThi.thoiGianLamBai * 60000);
-
-    const maThamGiaPhong = await this.generateMaThamGiaPhong();
-
-    try {
-      // Tạo phòng + đánh dấu đề "đã sử dụng" trong 1 transaction (all-or-nothing).
-      return await this.dataSource.transaction(async (em) => {
-        const phongThi = await em.save(
-          PhongThi,
-          em.create(PhongThi, {
-            maBaiThi: dto.maBaiThi,
-            cheDoCauHoi: dto.cheDoCauHoi,
-            moLuc,
-            dongLuc,
-            soNguoiThamGia: dto.soNguoiThamGia,
-            maThamGiaPhong,
-            trangThai: TrangThaiPhongThi.DANG_CHO,
-            taoBoi,
+      await em.save(
+        PhongThiBaiThi,
+        dto.maBaiThis.map((maBaiThi) =>
+          em.create(PhongThiBaiThi, {
+            maPhongThi: phongThi.maPhongThi,
+            maBaiThi,
           }),
-        );
-        await em.update(BaiThi, dto.maBaiThi, {
-          trangThai: TrangThaiBaiThi.DA_SU_DUNG,
-        });
-        return phongThi;
+        ),
+      );
+
+      return phongThi.maPhongThi;
+    }).then((maPhongThi) => this.findOne(maPhongThi));
+  }
+
+  async update(id: number, dto: UpdateExamRoomDto) {
+    const phong = await this.findOne(id);
+
+    // Chỉ cho sửa khi phòng chưa mở và chưa có thành viên (giữ toàn vẹn kỳ thi).
+    if (phong.trangThai !== TrangThaiPhongThi.DANG_CHO)
+      throw new BadRequestException('Chỉ sửa được phòng đang chờ mở');
+    if (phong.thanhViens?.length)
+      throw new BadRequestException('Không thể sửa phòng đã có người tham gia');
+
+    const moLuc = dto.moLuc ? new Date(dto.moLuc) : phong.moLuc;
+    if (dto.moLuc && moLuc < new Date())
+      throw new BadRequestException('Thời gian mở phòng không được ở quá khứ');
+    const thoiGianLamBai = dto.thoiGianLamBai ?? phong.thoiGianLamBai;
+    const dongLuc = new Date(moLuc.getTime() + thoiGianLamBai * 60000);
+
+    if (dto.maBaiThis)
+      await this.kiemTraDsBaiThi(dto.maBaiThis, phong.maMonHocHocKy);
+
+    return this.dataSource.transaction(async (em) => {
+      await em.update(PhongThi, id, {
+        tenPhongThi: dto.tenPhongThi ?? phong.tenPhongThi,
+        cheDoCauHoi: dto.cheDoCauHoi ?? phong.cheDoCauHoi,
+        thoiGianLamBai,
+        moLuc,
+        dongLuc,
+        soNguoiThamGia: dto.soNguoiThamGia ?? phong.soNguoiThamGia,
       });
-    } catch (e) {
-      // Unique index (maBaiThi) chặn 2 request tạo phòng đồng thời cho cùng đề.
-      if (this.laLoiTrungKhoa(e))
-        throw new BadRequestException(
-          'Đề thi này đã được dùng để tạo phòng thi',
+
+      if (dto.maBaiThis) {
+        await em.delete(PhongThiBaiThi, { maPhongThi: id });
+        await em.save(
+          PhongThiBaiThi,
+          dto.maBaiThis.map((maBaiThi) =>
+            em.create(PhongThiBaiThi, { maPhongThi: id, maBaiThi }),
+          ),
         );
-      throw e;
-    }
+      }
+
+      return id;
+    }).then(() => this.findOne(id));
   }
 
-  private laLoiTrungKhoa(e: any): boolean {
-    return (
-      e?.code === 'ER_DUP_ENTRY' ||
-      e?.errno === 1062 ||
-      e?.driverError?.errno === 1062
-    );
+  // Xóa mềm.
+  async remove(id: number) {
+    const phong = await this.phongThiRepo.findOne({
+      where: { maPhongThi: id },
+    });
+    if (!phong) throw new NotFoundException('Phòng thi không tồn tại');
+    phong.laHoatDong = false;
+    await this.phongThiRepo.save(phong);
+    return null;
   }
 
-  async updateStatus(
-    id: number,
-    trangThai: TrangThaiPhongThi,
-    taoBoi?: number,
-  ) {
-    const phongThi = await this.findOne(id, taoBoi);
+  async updateStatus(id: number, trangThai: TrangThaiPhongThi) {
+    const phongThi = await this.findOne(id);
 
     if (phongThi.trangThai === trangThai) return phongThi;
     if (!TRANSITIONS[phongThi.trangThai].includes(trangThai))
@@ -236,48 +285,52 @@ export class ExamRoomsService {
         `Không thể chuyển trạng thái từ "${phongThi.trangThai}" sang "${trangThai}"`,
       );
 
-    // GV bấm "bắt đầu ngay" cho phòng chưa tới giờ mở: dời cửa sổ thi về hiện tại
-    // (moLuc = now, dongLuc = now + thời lượng đề). Nếu không dời, thời gian còn lại
-    // vẫn tính theo dongLuc cũ (= moLuc dự kiến + thời lượng) nên thí sinh được làm
-    // dài hơn thời lượng đề. Chỉ áp dụng khi mở SỚM (now < moLuc).
+    // Mở sớm: dời cửa sổ thi về hiện tại để thí sinh có đủ thời lượng.
     const now = new Date();
     if (trangThai === TrangThaiPhongThi.DANG_DIEN_RA && now < phongThi.moLuc) {
       phongThi.moLuc = now;
       phongThi.dongLuc = new Date(
-        now.getTime() + phongThi.baiThi.thoiGianLamBai * 60000,
+        now.getTime() + phongThi.thoiGianLamBai * 60000,
       );
     }
 
     phongThi.trangThai = trangThai;
     const daLuu = await this.phongThiRepo.save(phongThi);
 
-    // Đóng phòng -> chốt mọi bài làm còn đang làm (kể cả đóng sớm trước dongLuc)
     if (trangThai === TrangThaiPhongThi.DA_DONG)
       await this.examSessionsService.chotBaiLamCuaPhong(phongThi.maPhongThi);
 
     return daLuu;
   }
 
-  async getMembers(id: number, taoBoi?: number) {
-    await this.findOne(id, taoBoi);
+  async getMembers(id: number) {
+    await this.findOne(id);
     return this.thanhVienRepo.find({
       where: { maPhongThi: id },
       relations: { nguoiDung: true },
     });
   }
 
-  // Sinh mã tham gia phòng duy nhất (6 ký tự chữ + số viết hoa)
-  private async generateMaThamGiaPhong(): Promise<string> {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-    for (let attempt = 0; attempt < 10; attempt++) {
-      let code = '';
-      for (let i = 0; i < 6; i++)
-        code += chars[Math.floor(Math.random() * chars.length)];
-      const existed = await this.phongThiRepo.countBy({ maThamGiaPhong: code });
-      if (existed === 0) return code;
-    }
-    throw new BadRequestException(
-      'Không thể sinh mã tham gia phòng, vui lòng thử lại',
-    );
+  private async kiemTraMonHocHocKy(maMonHocHocKy: number) {
+    const mhhk = await this.mhhkRepo.findOne({ where: { maMonHocHocKy } });
+    if (!mhhk)
+      throw new BadRequestException('Môn học của học kỳ không tồn tại');
+  }
+
+  // Mọi đề phải tồn tại, đã công khai và thuộc đúng môn-học-kỳ của phòng.
+  private async kiemTraDsBaiThi(maBaiThis: number[], maMonHocHocKy: number) {
+    const ids = [...new Set(maBaiThis)];
+    if (ids.length !== maBaiThis.length)
+      throw new BadRequestException('Danh sách đề thi bị trùng');
+
+    const hopLe = await this.baiThiRepo.countBy({
+      maBaiThi: In(ids),
+      maMonHocHocKy,
+      trangThai: TrangThaiBaiThi.CONG_KHAI,
+    });
+    if (hopLe !== ids.length)
+      throw new BadRequestException(
+        'Một số đề thi không tồn tại, chưa công khai hoặc không thuộc môn học của học kỳ này',
+      );
   }
 }
