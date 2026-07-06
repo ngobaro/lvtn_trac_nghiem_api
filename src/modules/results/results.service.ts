@@ -12,6 +12,8 @@ import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
 import { MonHoc } from '../subjects/entities/mon-hoc.entity';
+import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
+import { PhanCongGiangDay } from '../teaching-assignments/entities/phan-cong-giang-day.entity';
 import { QueryMyResultDto } from './dto/query-my-result.dto';
 import { QueryResultRoomDto } from './dto/query-result-room.dto';
 import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
@@ -27,8 +29,19 @@ import { CurrentUserPayload } from '../../common/interfaces/current-user.interfa
 export class ResultsService {
   constructor(
     @InjectRepository(KetQua) private ketQuaRepo: Repository<KetQua>,
+    @InjectRepository(PhanCongGiangDay)
+    private phanCongRepo: Repository<PhanCongGiangDay>,
     private dataSource: DataSource,
   ) {}
+
+  // Các môn-học-kỳ mà 1 giáo viên được phân dạy (để giới hạn phạm vi xem kết quả).
+  private async layOfferingsGvDay(maGiaoVien: number): Promise<number[]> {
+    const ds = await this.phanCongRepo.find({
+      where: { maGiaoVien },
+      select: { maMonHocHocKy: true },
+    });
+    return ds.map((p) => p.maMonHocHocKy);
+  }
 
   // Lịch sử thi của học sinh hiện tại (tìm theo tên đề + lọc theo môn)
   async getMyResults(maNguoiDung: number, query: QueryMyResultDto = {}) {
@@ -39,11 +52,12 @@ export class ResultsService {
       .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
       .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
       .leftJoin(PhongThi, 'pt', 'pt.maPhongThi = bl.maPhongThi')
-      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = bt.maMonHoc')
+      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = bt.maMonHocHocKy')
+      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = mhhk.maMonHoc')
       .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung });
 
     if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search}%` });
-    if (maMonHoc) qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+    if (maMonHoc) qb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc });
 
     const countQb = qb.clone();
 
@@ -55,7 +69,7 @@ export class ResultsService {
       'kq.tongSoCau AS tongSoCau',
       'kq.soCauDung AS soCauDung',
       'bt.tieuDe AS tieuDe',
-      'bt.maMonHoc AS maMonHoc',
+      'mhhk.maMonHoc AS maMonHoc',
       'mh.tenMonHoc AS tenMonHoc',
       'bl.maPhongThi AS maPhongThi',
       'bl.thoiGianBatDau AS thoiGianBatDau',
@@ -77,16 +91,17 @@ export class ResultsService {
     return this.ketQuaRepo
       .createQueryBuilder('kq')
       .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
-      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = bt.maMonHoc')
+      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = bt.maMonHocHocKy')
+      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = mhhk.maMonHoc')
       .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung })
-      .select('bt.maMonHoc', 'maMonHoc')
+      .select('mhhk.maMonHoc', 'maMonHoc')
       .addSelect('mh.tenMonHoc', 'tenMonHoc')
       .distinct(true)
       .orderBy('mh.tenMonHoc', 'ASC')
       .getRawMany();
   }
 
-  // Danh sách kết quả theo đề thi / phòng thi (GV chỉ xem đề của mình, Admin xem tất cả)
+  // Danh sách kết quả (GV chỉ xem đề của môn-kỳ mình dạy, Admin xem tất cả)
   async getResults(query: QueryResultDto, user: CurrentUserPayload) {
     const { page = 1, limit = 10, maBaiThi, maPhongThi, maNguoiDung } = query;
 
@@ -97,7 +112,7 @@ export class ResultsService {
       .leftJoin(NguoiDung, 'nd', 'nd.maNguoiDung = kq.maNguoiDung');
 
     if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
-      qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi: user.maNguoiDung });
+      await this.gioiHanTheoGvDay(qb, user.maNguoiDung);
     if (maBaiThi) qb.andWhere('kq.maBaiThi = :maBaiThi', { maBaiThi });
     if (maPhongThi) qb.andWhere('bl.maPhongThi = :maPhongThi', { maPhongThi });
     if (maNguoiDung)
@@ -126,6 +141,16 @@ export class ResultsService {
     const items = await qb.getRawMany();
     const total = await countQb.getCount();
     return { items, total, page, limit };
+  }
+
+  // Thêm điều kiện giới hạn theo môn-học-kỳ mà GV được phân dạy (trên alias 'bt').
+  private async gioiHanTheoGvDay(qb: any, maGiaoVien: number) {
+    const offerings = await this.layOfferingsGvDay(maGiaoVien);
+    if (offerings.length === 0) {
+      qb.andWhere('1 = 0');
+      return;
+    }
+    qb.andWhere('bt.maMonHocHocKy IN (:...offerings)', { offerings });
   }
 
   // Chi tiết 1 kết quả: từng câu hỏi kèm đáp án đã chọn vs đáp án đúng
@@ -189,13 +214,14 @@ export class ResultsService {
     const qb = this.ketQuaRepo
       .createQueryBuilder('kq')
       .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
-      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam');
+      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
+      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = bt.maMonHocHocKy');
 
     if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
-      qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi: user.maNguoiDung });
+      await this.gioiHanTheoGvDay(qb, user.maNguoiDung);
     if (maBaiThi) qb.andWhere('kq.maBaiThi = :maBaiThi', { maBaiThi });
     if (maPhongThi) qb.andWhere('bl.maPhongThi = :maPhongThi', { maPhongThi });
-    if (maMonHoc) qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+    if (maMonHoc) qb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc });
 
     const raw = await qb
       .select('COUNT(kq.maKetQua)', 'soLuotThi')
@@ -215,25 +241,24 @@ export class ResultsService {
     };
   }
 
-  // Thống kê gom nhóm theo phòng thi (GV chỉ xem phòng của mình, Admin xem tất cả).
+  // Thống kê gom nhóm theo phòng thi (GV chỉ xem phòng của môn-kỳ mình dạy).
   async getRoomStats(query: QueryResultRoomDto, user: CurrentUserPayload) {
-    const { page = 1, limit = 10, maBaiThi, maMonHoc, search } = query;
+    const { page = 1, limit = 10, maMonHoc, search } = query;
 
     const phongThiRepo = this.dataSource.getRepository(PhongThi);
 
-    // QueryBuilder gốc dùng chung cho cả count (số phòng) và lấy dữ liệu.
     const baseQb = phongThiRepo
       .createQueryBuilder('pt')
-      .leftJoin('pt.baiThi', 'bt');
+      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = pt.maMonHocHocKy')
+      .where('pt.laHoatDong = :hd', { hd: true });
 
-    if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
-      baseQb.andWhere('pt.taoBoi = :taoBoi', { taoBoi: user.maNguoiDung });
-    if (maBaiThi) baseQb.andWhere('pt.maBaiThi = :maBaiThi', { maBaiThi });
-    if (maMonHoc) baseQb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
-    if (search)
-      baseQb.andWhere('(pt.maThamGiaPhong LIKE :s OR bt.tieuDe LIKE :s)', {
-        s: `%${search}%`,
-      });
+    if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN) {
+      const offerings = await this.layOfferingsGvDay(user.maNguoiDung);
+      if (offerings.length === 0) return { items: [], total: 0, page, limit };
+      baseQb.andWhere('pt.maMonHocHocKy IN (:...offerings)', { offerings });
+    }
+    if (maMonHoc) baseQb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc });
+    if (search) baseQb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search}%` });
 
     const total = await baseQb.clone().getCount();
 
@@ -241,8 +266,7 @@ export class ResultsService {
       .leftJoin(BaiLam, 'bl', 'bl.maPhongThi = pt.maPhongThi')
       .leftJoin(KetQua, 'kq', 'kq.maBaiLam = bl.maBaiLam')
       .select('pt.maPhongThi', 'maPhongThi')
-      .addSelect('pt.maThamGiaPhong', 'maThamGiaPhong')
-      .addSelect('bt.tieuDe', 'tieuDe')
+      .addSelect('pt.tenPhongThi', 'tenPhongThi')
       .addSelect('COUNT(DISTINCT kq.maKetQua)', 'soLuotNop')
       .addSelect('AVG(kq.diemSo)', 'diemTrungBinh')
       .addSelect('MAX(kq.diemSo)', 'diemCaoNhat')
@@ -257,8 +281,7 @@ export class ResultsService {
         'tongThanhVien',
       )
       .groupBy('pt.maPhongThi')
-      .addGroupBy('pt.maThamGiaPhong')
-      .addGroupBy('bt.tieuDe')
+      .addGroupBy('pt.tenPhongThi')
       .orderBy('pt.maPhongThi', 'DESC')
       .offset((page - 1) * limit)
       .limit(limit);
@@ -268,8 +291,7 @@ export class ResultsService {
       const soLuotNop = Number(r.soLuotNop) || 0;
       return {
         maPhongThi: Number(r.maPhongThi),
-        maThamGiaPhong: r.maThamGiaPhong,
-        tieuDe: r.tieuDe,
+        tenPhongThi: r.tenPhongThi,
         soLuotNop,
         tongThanhVien: Number(r.tongThanhVien) || 0,
         diemTrungBinh: soLuotNop
@@ -290,8 +312,7 @@ export class ResultsService {
     if (user.vaiTro === VaiTro.HOC_SINH) {
       if (ketQua.maNguoiDung !== user.maNguoiDung)
         throw new ForbiddenException('Bạn không có quyền xem kết quả này');
-      // Chưa tới giờ đóng phòng -> chưa cho HS xem chi tiết để tránh lộ đáp án
-      // cho các thí sinh khác còn đang làm bài trong phòng.
+      // Chưa tới giờ đóng phòng -> chưa cho HS xem chi tiết để tránh lộ đáp án.
       const baiLam = await this.dataSource.getRepository(BaiLam).findOne({
         where: { maBaiLam: ketQua.maBaiLam },
         relations: { phongThi: true },
@@ -302,11 +323,12 @@ export class ResultsService {
         );
       return;
     }
-    // Giáo viên: chỉ xem kết quả của đề thi do mình tạo
+    // Giáo viên: chỉ xem kết quả của đề thuộc môn-kỳ mình được phân dạy.
     const baiThi = await this.dataSource
       .getRepository(BaiThi)
       .findOne({ where: { maBaiThi: ketQua.maBaiThi } });
-    if (!baiThi || baiThi.taoBoi !== user.maNguoiDung)
+    const offerings = await this.layOfferingsGvDay(user.maNguoiDung);
+    if (!baiThi || !offerings.includes(baiThi.maMonHocHocKy))
       throw new ForbiddenException('Bạn không có quyền xem kết quả này');
   }
 
