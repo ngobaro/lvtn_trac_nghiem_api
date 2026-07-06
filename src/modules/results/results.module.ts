@@ -9,6 +9,7 @@ import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from '../exam-sessions/entities/nguoi-dung-tra-loi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
 import { DapAn } from '../questions/entities/dap-an.entity';
+import { PhanCongGiangDay } from '../teaching-assignments/entities/phan-cong-giang-day.entity';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { DapAn } from '../questions/entities/dap-an.entity';
       NguoiDungTraLoi,
       LuaChon,
       DapAn,
+      PhanCongGiangDay,
     ]),
   ],
   controllers: [ResultsController],

@@ -15,8 +15,9 @@ export class CreateExamDto {
   @IsNotEmpty()
   tieuDe: string;
 
+  // Môn-học-kỳ mà GV được phân dạy.
   @IsInt()
-  maMonHoc: number;
+  maMonHocHocKy: number;
 
   @IsInt()
   @Min(1)

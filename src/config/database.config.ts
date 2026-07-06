@@ -12,7 +12,10 @@ export const databaseConfig = (): TypeOrmModuleOptions => ({
   // khi so sánh hạn nộp / đếm ngược thời gian thi.
   timezone: 'Z',
   autoLoadEntities: true,
-  synchronize: false,
+  // Chỉ bật khi cần dựng lại schema (đặt DB_SYNCHRONIZE=true trong .env),
+  // chạy 1 lần trên DB dev/demo rồi tắt lại (bỏ biến hoặc đặt false).
+  // CẢNH BÁO: true có thể tự xóa/sửa cột & bảng — không dùng trên dữ liệu cần giữ.
+  synchronize: process.env.DB_SYNCHRONIZE === 'true',
   ssl: {
     rejectUnauthorized: true,
   },

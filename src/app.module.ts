@@ -13,6 +13,10 @@ import { ExamsModule } from './modules/exams/exams.module';
 import { ExamRoomsModule } from './modules/exam-rooms/exam-rooms.module';
 import { ExamSessionsModule } from './modules/exam-sessions/exam-sessions.module';
 import { ResultsModule } from './modules/results/results.module';
+import { SemestersModule } from './modules/semesters/semesters.module';
+import { SubjectOfferingsModule } from './modules/subject-offerings/subject-offerings.module';
+import { TeachingAssignmentsModule } from './modules/teaching-assignments/teaching-assignments.module';
+import { EnrollmentsModule } from './modules/enrollments/enrollments.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { redisConfig } from './config/redis.config';
 
@@ -26,6 +30,10 @@ import { redisConfig } from './config/redis.config';
     AuthModule,
     UsersModule,
     SubjectsModule,
+    SemestersModule,
+    SubjectOfferingsModule,
+    TeachingAssignmentsModule,
+    EnrollmentsModule,
     QuestionsModule,
     ExamsModule,
     ExamRoomsModule,

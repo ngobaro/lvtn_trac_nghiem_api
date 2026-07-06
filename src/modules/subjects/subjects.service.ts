@@ -1,108 +1,83 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import { Repository, DataSource } from 'typeorm';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
+import { Repository } from 'typeorm';
 import { MonHoc } from './entities/mon-hoc.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { QuerySubjectDto } from './dto/query-subject.dto';
-import { CauHoi } from '../questions/entities/cau-hoi.entity';
-import { BaiThi } from '../exams/entities/bai-thi.entity';
 
+// Môn học là danh mục chung do Admin quản lý — không còn scoping theo owner.
 @Injectable()
 export class SubjectsService {
-    constructor(
-        @InjectRepository(MonHoc)
-        private readonly monHocRepo: Repository<MonHoc>,
-        private readonly dataSource: DataSource,
-    ) { }
+  constructor(
+    @InjectRepository(MonHoc)
+    private readonly monHocRepo: Repository<MonHoc>,
+  ) {}
 
-    // maNguoiDung = undefined => admin, lấy toàn bộ
-    async findAll(query: QuerySubjectDto, maNguoiDung?: number) {
-        const { page = 1, limit = 10, search, laHoatDong } = query;
+  async findAll(query: QuerySubjectDto) {
+    const { page = 1, limit = 10, search, laHoatDong } = query;
 
-        const qb = this.monHocRepo.createQueryBuilder('m');
-        if (maNguoiDung !== undefined)
-            qb.andWhere('m.maNguoiDung = :maNguoiDung', { maNguoiDung });
-        if (laHoatDong !== undefined)
-            qb.andWhere('m.laHoatDong = :laHoatDong', { laHoatDong });
-        if (search)
-            qb.andWhere('m.tenMonHoc LIKE :s', { s: `%${search}%` });
+    const qb = this.monHocRepo.createQueryBuilder('m');
+    if (laHoatDong !== undefined)
+      qb.andWhere('m.laHoatDong = :laHoatDong', { laHoatDong });
+    if (search)
+      qb.andWhere('(m.tenMonHoc LIKE :s OR m.maMon LIKE :s)', {
+        s: `%${search}%`,
+      });
 
-        const [items, total] = await qb
-            .orderBy('m.maMonHoc', 'DESC')
-            .skip((page - 1) * limit)
-            .take(limit)
-            .getManyAndCount();
-        return { items, total, page, limit };
+    const [items, total] = await qb
+      .orderBy('m.maMonHoc', 'DESC')
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+    return { items, total, page, limit };
+  }
+
+  async findOne(id: number) {
+    const monHoc = await this.monHocRepo.findOne({ where: { maMonHoc: id } });
+    if (!monHoc) throw new NotFoundException('Môn học không tồn tại');
+    return monHoc;
+  }
+
+  async create(dto: CreateSubjectDto) {
+    await this.kiemTraTrung(dto.tenMonHoc);
+    const monHoc = this.monHocRepo.create(dto);
+    return this.monHocRepo.save(monHoc);
+  }
+
+  async update(id: number, dto: UpdateSubjectDto) {
+    const monHoc = await this.findOne(id);
+    await this.kiemTraTrung(dto.tenMonHoc, id);
+    return this.monHocRepo.save({ ...monHoc, ...dto });
+  }
+
+  // Kiểm tra trùng tên môn trong toàn hệ thống (danh mục chung).
+  private async kiemTraTrung(tenMonHoc?: string, boQuaId?: number) {
+    if (tenMonHoc) {
+      const qb = this.monHocRepo
+        .createQueryBuilder('m')
+        .where('m.tenMonHoc = :tenMonHoc', { tenMonHoc });
+      if (boQuaId) qb.andWhere('m.maMonHoc != :boQuaId', { boQuaId });
+      if (await qb.getCount())
+        throw new BadRequestException('Tên môn học đã tồn tại');
     }
+  }
 
-    // maNguoiDung = undefined => admin bypass ownership check
-    async findOne(id: number, maNguoiDung?: number) {
-        const where: any = { maMonHoc: id };
-        if (maNguoiDung !== undefined) where.maNguoiDung = maNguoiDung;
+  // Xóa mềm để không vỡ khóa ngoại với câu hỏi / môn-học-kỳ đang tham chiếu.
+  async remove(id: number) {
+    const monHoc = await this.findOne(id);
+    monHoc.laHoatDong = false;
+    await this.monHocRepo.save(monHoc);
+    return null;
+  }
 
-        const monHoc = await this.monHocRepo.findOne({ where });
-        if (!monHoc) throw new NotFoundException('Môn học không tồn tại');
-        return monHoc;
-    }
-
-    async create(dto: CreateSubjectDto, maNguoiDung: number) {
-        await this.kiemTraTrung(maNguoiDung, dto.tenMonHoc);
-        const monHoc = this.monHocRepo.create({ ...dto, maNguoiDung });
-        return await this.monHocRepo.save(monHoc);
-    }
-
-    async update(id: number, dto: UpdateSubjectDto, maNguoiDung?: number) {
-        const monHoc = await this.findOne(id, maNguoiDung);
-        await this.kiemTraTrung(monHoc.maNguoiDung, dto.tenMonHoc, id);
-        return await this.monHocRepo.save({ ...monHoc, ...dto });
-    }
-
-    // Kiểm tra trùng tên môn trong phạm vi cùng người sở hữu.
-    // boQuaId: bỏ qua chính bản ghi đang cập nhật.
-    private async kiemTraTrung(
-        maNguoiDung: number,
-        tenMonHoc?: string,
-        boQuaId?: number,
-    ) {
-        if (tenMonHoc) {
-            const qb = this.monHocRepo
-                .createQueryBuilder('m')
-                .where('m.maNguoiDung = :maNguoiDung', { maNguoiDung })
-                .andWhere('m.tenMonHoc = :tenMonHoc', { tenMonHoc });
-            if (boQuaId) qb.andWhere('m.maMonHoc != :boQuaId', { boQuaId });
-            if (await qb.getCount())
-                throw new BadRequestException('Tên môn học đã tồn tại');
-        }
-    }
-
-    async remove(id: number, maNguoiDung?: number) {
-        const monHoc = await this.findOne(id, maNguoiDung);
-
-        // Chặn xóa khi còn câu hỏi / đề thi tham chiếu (tránh lỗi khóa ngoại 500).
-        const soCauHoi = await this.dataSource
-            .getRepository(CauHoi)
-            .countBy({ maMonHoc: id });
-        if (soCauHoi > 0)
-            throw new BadRequestException(
-                'Không thể xóa môn học khi vẫn còn câu hỏi thuộc môn này',
-            );
-
-        const soBaiThi = await this.dataSource
-            .getRepository(BaiThi)
-            .countBy({ maMonHoc: id });
-        if (soBaiThi > 0)
-            throw new BadRequestException(
-                'Không thể xóa môn học khi vẫn còn đề thi thuộc môn này',
-            );
-
-        await this.monHocRepo.remove(monHoc);
-        return null;
-    }
-
-    async updateStatus(id: number, laHoatDong: boolean, maNguoiDung?: number) {
-        const monHoc = await this.findOne(id, maNguoiDung);
-        monHoc.laHoatDong = laHoatDong;
-        return this.monHocRepo.save(monHoc);
-    }
+  async updateStatus(id: number, laHoatDong: boolean) {
+    const monHoc = await this.findOne(id);
+    monHoc.laHoatDong = laHoatDong;
+    return this.monHocRepo.save(monHoc);
+  }
 }
