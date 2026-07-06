@@ -1,13 +1,14 @@
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from 'typeorm';
-import { NguoiDung } from '../../auth/entities/nguoi-dung.entity';
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
+// Môn học là danh mục chung do Admin quản lý (không còn thuộc sở hữu GV).
 @Entity('MON_HOC')
 export class MonHoc {
   @PrimaryGeneratedColumn()
   maMonHoc: number;
 
-  @Column()
-  maNguoiDung: number;
+  // Mã môn (tùy chọn), ví dụ "MATH101".
+  @Column({ length: 50, nullable: true })
+  maMon: string;
 
   @Column({ length: 100 })
   tenMonHoc: string;
@@ -17,8 +18,4 @@ export class MonHoc {
 
   @Column({ default: true })
   laHoatDong: boolean;
-
-  @ManyToOne(() => NguoiDung)
-  @JoinColumn({ name: 'maNguoiDung' })
-  nguoiDung: NguoiDung;
 }
