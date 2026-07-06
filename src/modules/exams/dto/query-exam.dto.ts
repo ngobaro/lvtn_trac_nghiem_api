@@ -9,11 +9,11 @@ export class QueryExamDto extends PaginationDto {
   @IsString()
   search?: string;
 
-  // Lọc đề thi theo môn học.
+  // Lọc đề thi theo môn-học-kỳ.
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  maMonHoc?: number;
+  maMonHocHocKy?: number;
 
   // Lọc theo trạng thái (nhap | cong_khai).
   @IsOptional()

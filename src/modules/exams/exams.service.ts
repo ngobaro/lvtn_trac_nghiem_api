@@ -8,31 +8,41 @@ import { Repository, DataSource, In } from 'typeorm';
 import { BaiThi } from './entities/bai-thi.entity';
 import { CauHoiBaiThi } from './entities/cau-hoi-bai-thi.entity';
 import { CauHoi } from '../questions/entities/cau-hoi.entity';
+import { PhongThiBaiThi } from '../exam-rooms/entities/phong-thi-bai-thi.entity';
+import { PhanCongGiangDay } from '../teaching-assignments/entities/phan-cong-giang-day.entity';
 import { CreateExamDto } from './dto/create-exam.dto';
 import { UpdateExamDto } from './dto/update-exam.dto';
 import { ExamQuestionOrderDto } from './dto/exam-question-order.dto';
 import { QueryExamDto } from './dto/query-exam.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
-import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 
 @Injectable()
 export class ExamsService {
   constructor(
     @InjectRepository(BaiThi) private baiThiRepo: Repository<BaiThi>,
-    @InjectRepository(PhongThi) private phongThiRepo: Repository<PhongThi>,
+    @InjectRepository(PhongThiBaiThi)
+    private phongThiBaiThiRepo: Repository<PhongThiBaiThi>,
+    @InjectRepository(PhanCongGiangDay)
+    private phanCongRepo: Repository<PhanCongGiangDay>,
     private dataSource: DataSource,
   ) {}
 
   // taoBoi = undefined => admin, không filter theo người tạo
   async findAll(query: QueryExamDto, taoBoi?: number) {
-    const { page = 1, limit = 10, search, maMonHoc, trangThai } = query;
+    const { page = 1, limit = 10, search, maMonHocHocKy, trangThai } = query;
 
-    const qb = this.baiThiRepo.createQueryBuilder('bt');
+    const qb = this.baiThiRepo
+      .createQueryBuilder('bt')
+      .leftJoinAndSelect('bt.monHocHocKy', 'mhhk')
+      .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
+      .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
+      .leftJoinAndSelect('bt.nguoiTao', 'nguoiTao');
+
     if (taoBoi !== undefined) qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi });
     if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search}%` });
-    if (maMonHoc !== undefined)
-      qb.andWhere('bt.maMonHoc = :maMonHoc', { maMonHoc });
+    if (maMonHocHocKy !== undefined)
+      qb.andWhere('bt.maMonHocHocKy = :maMonHocHocKy', { maMonHocHocKy });
     if (trangThai) qb.andWhere('bt.trangThai = :trangThai', { trangThai });
 
     const [items, total] = await qb
@@ -50,7 +60,10 @@ export class ExamsService {
 
     const baiThi = await this.baiThiRepo.findOne({
       where,
-      relations: { cauHoiBaiThis: { cauHoi: { luaChons: true } } },
+      relations: {
+        cauHoiBaiThis: { cauHoi: { luaChons: true } },
+        monHocHocKy: { monHoc: true, hocKy: true },
+      },
       order: { cauHoiBaiThis: { thuTu: 'ASC' } },
     });
     if (!baiThi) throw new NotFoundException('Đề thi không tồn tại');
@@ -62,17 +75,29 @@ export class ExamsService {
   }
 
   // Đề được coi là "đã sử dụng" khi đã có bài làm của học sinh (daThi)
-  // hoặc đã được dùng để tạo phòng thi (coPhong). Khi đó danh sách câu hỏi
+  // hoặc đã được đưa vào phòng thi (coPhong). Khi đó danh sách câu hỏi
   // phải được đóng băng để giữ toàn vẹn phòng thi & kết quả đã chấm.
   private async kiemTraDaSuDung(maBaiThi: number) {
     const [soBaiLam, soPhong] = await Promise.all([
       this.dataSource.getRepository(BaiLam).countBy({ maBaiThi }),
-      this.phongThiRepo.countBy({ maBaiThi }),
+      this.phongThiBaiThiRepo.countBy({ maBaiThi }),
     ]);
     return { daThi: soBaiLam > 0, coPhong: soPhong > 0 };
   }
 
+  // Kiểm tra giáo viên có được phân dạy môn-học-kỳ này không.
+  private async kiemTraPhanCong(maMonHocHocKy: number, taoBoi: number) {
+    const pc = await this.phanCongRepo.findOne({
+      where: { maMonHocHocKy, maGiaoVien: taoBoi },
+    });
+    if (!pc)
+      throw new BadRequestException(
+        'Bạn không được phân dạy môn học của học kỳ này',
+      );
+  }
+
   async create(dto: CreateExamDto, taoBoi: number) {
+    await this.kiemTraPhanCong(dto.maMonHocHocKy, taoBoi);
     await this.validateCauHois(dto.cauHois, taoBoi);
 
     return this.dataSource
@@ -81,7 +106,7 @@ export class ExamsService {
           BaiThi,
           em.create(BaiThi, {
             tieuDe: dto.tieuDe,
-            maMonHoc: dto.maMonHoc,
+            maMonHocHocKy: dto.maMonHocHocKy,
             thoiGianLamBai: dto.thoiGianLamBai,
             trangThai: dto.trangThai,
             taoBoi,
@@ -117,16 +142,18 @@ export class ExamsService {
       );
     if (coPhong)
       throw new BadRequestException(
-        'Không thể sửa đề thi đã được dùng để tạo phòng thi',
+        'Không thể sửa đề thi đã được đưa vào phòng thi',
       );
 
+    if (dto.maMonHocHocKy !== undefined && taoBoi !== undefined)
+      await this.kiemTraPhanCong(dto.maMonHocHocKy, taoBoi);
     if (dto.cauHois) await this.validateCauHois(dto.cauHois, taoBoi);
 
     return this.dataSource
       .transaction(async (em) => {
         await em.update(BaiThi, id, {
           tieuDe: dto.tieuDe,
-          maMonHoc: dto.maMonHoc,
+          maMonHocHocKy: dto.maMonHocHocKy,
           thoiGianLamBai: dto.thoiGianLamBai,
           trangThai: dto.trangThai,
         });
@@ -155,12 +182,11 @@ export class ExamsService {
   async updateStatus(id: number, trangThai: TrangThaiBaiThi, taoBoi?: number) {
     const baiThi = await this.findOne(id, taoBoi);
 
-    // "Đã sử dụng" do hệ thống tự đặt khi tạo phòng — không cho client tự đặt.
+    // "Đã sử dụng" do hệ thống tự đặt khi đưa vào phòng — không cho client tự đặt.
     if (trangThai === TrangThaiBaiThi.DA_SU_DUNG)
       throw new BadRequestException(
-        'Trạng thái "Đã sử dụng" do hệ thống tự đặt khi tạo phòng thi',
+        'Trạng thái "Đã sử dụng" do hệ thống tự đặt khi đưa vào phòng thi',
       );
-    // Đề đã sử dụng thì không đổi trạng thái được nữa.
     if (baiThi.trangThai === TrangThaiBaiThi.DA_SU_DUNG)
       throw new BadRequestException(
         'Không thể đổi trạng thái đề thi đã sử dụng',
@@ -175,16 +201,15 @@ export class ExamsService {
         'Không thể công khai đề thi chưa có câu hỏi',
       );
 
-    // Không cho hạ đề về nháp khi đã dùng tạo phòng thi:
-    // sẽ mở khóa lại câu hỏi và phá vỡ tính toàn vẹn của các phòng thi liên quan.
+    // Không cho hạ đề về nháp khi đã đưa vào phòng thi.
     if (
       trangThai === TrangThaiBaiThi.NHAP &&
       baiThi.trangThai === TrangThaiBaiThi.CONG_KHAI
     ) {
-      const soPhong = await this.phongThiRepo.countBy({ maBaiThi: id });
+      const soPhong = await this.phongThiBaiThiRepo.countBy({ maBaiThi: id });
       if (soPhong > 0)
         throw new BadRequestException(
-          'Không thể ẩn đề thi đã được dùng để tạo phòng thi',
+          'Không thể ẩn đề thi đã được đưa vào phòng thi',
         );
     }
 
@@ -195,9 +220,8 @@ export class ExamsService {
   async remove(id: number, taoBoi?: number) {
     const baiThi = await this.findOne(id, taoBoi);
 
-    // Đề đã dùng để tạo phòng thi thì không cho xóa (giữ toàn vẹn phòng thi,
-    // bài làm & kết quả). Khóa ngoại PHONG_THI/BAI_LAM/KET_QUA cũng sẽ chặn ở DB.
-    const soPhong = await this.phongThiRepo.countBy({ maBaiThi: id });
+    // Đề đã đưa vào phòng thi thì không cho xóa (giữ toàn vẹn phòng/bài làm/kết quả).
+    const soPhong = await this.phongThiBaiThiRepo.countBy({ maBaiThi: id });
     if (soPhong > 0)
       throw new BadRequestException('Không thể xóa đề thi đã sử dụng');
 

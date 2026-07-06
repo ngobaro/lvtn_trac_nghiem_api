@@ -7,7 +7,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { NguoiDung } from '../../auth/entities/nguoi-dung.entity';
-import { MonHoc } from '../../subjects/entities/mon-hoc.entity';
+import { MonHocHocKy } from '../../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { TrangThaiBaiThi } from '../../../common/enums/trang-thai-bai-thi.enum';
 import { CauHoiBaiThi } from './cau-hoi-bai-thi.entity';
 
@@ -19,8 +19,9 @@ export class BaiThi {
   @Column()
   taoBoi: number;
 
+  // Đề thi gắn chặt 1 môn-học-kỳ; không tái dùng xuyên kỳ.
   @Column()
-  maMonHoc: number;
+  maMonHocHocKy: number;
 
   @Column({ length: 100 })
   tieuDe: string;
@@ -39,9 +40,9 @@ export class BaiThi {
   @JoinColumn({ name: 'taoBoi' })
   nguoiTao: NguoiDung;
 
-  @ManyToOne(() => MonHoc)
-  @JoinColumn({ name: 'maMonHoc' })
-  monHoc: MonHoc;
+  @ManyToOne(() => MonHocHocKy)
+  @JoinColumn({ name: 'maMonHocHocKy' })
+  monHocHocKy: MonHocHocKy;
 
   @OneToMany(() => CauHoiBaiThi, (chbt) => chbt.baiThi, { cascade: true })
   cauHoiBaiThis: CauHoiBaiThi[];
