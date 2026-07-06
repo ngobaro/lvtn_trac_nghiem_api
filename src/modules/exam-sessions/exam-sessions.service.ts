@@ -12,7 +12,9 @@ import { BaiLam } from './entities/bai-lam.entity';
 import { CauHoiBaiLam } from './entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from './entities/nguoi-dung-tra-loi.entity';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
+import { PhongThiBaiThi } from '../exam-rooms/entities/phong-thi-bai-thi.entity';
 import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
+import { GhiDanh } from '../enrollments/entities/ghi-danh.entity';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
 import { DapAn } from '../questions/entities/dap-an.entity';
@@ -36,22 +38,36 @@ export class ExamSessionsService {
     @InjectRepository(NguoiDungTraLoi)
     private traLoiRepo: Repository<NguoiDungTraLoi>,
     @InjectRepository(PhongThi) private phongThiRepo: Repository<PhongThi>,
+    @InjectRepository(PhongThiBaiThi)
+    private phongThiBaiThiRepo: Repository<PhongThiBaiThi>,
     @InjectRepository(ThanhVienPhong)
     private thanhVienRepo: Repository<ThanhVienPhong>,
+    @InjectRepository(GhiDanh) private ghiDanhRepo: Repository<GhiDanh>,
     @InjectRepository(CauHoiBaiThi)
     private cauHoiBaiThiRepo: Repository<CauHoiBaiThi>,
     private dataSource: DataSource,
   ) {}
 
-  // HS nhập mã phòng -> tạo BAI_LAM + bộ CAU_HOI_BAI_LAM (theo cheDoCauHoi)
+  // HS vào phòng (theo mã phòng) -> kiểm tra ghi danh -> bốc ngẫu nhiên 1 đề ->
+  // tạo BAI_LAM + bộ CAU_HOI_BAI_LAM (theo cheDoCauHoi)
   async joinRoom(dto: JoinRoomDto, maNguoiDung: number) {
     const phong = await this.phongThiRepo.findOne({
-      where: { maThamGiaPhong: dto.maThamGiaPhong },
+      where: { maPhongThi: dto.maPhongThi },
     });
-    if (!phong) throw new NotFoundException('Mã tham gia phòng không đúng');
+    if (!phong || !phong.laHoatDong)
+      throw new NotFoundException('Phòng thi không tồn tại');
+
+    // Quyền vào phòng dựa trên ghi danh: HS phải được ghi danh môn-học-kỳ của phòng.
+    const daGhiDanh = await this.ghiDanhRepo.findOne({
+      where: { maMonHocHocKy: phong.maMonHocHocKy, maHocSinh: maNguoiDung },
+    });
+    if (!daGhiDanh)
+      throw new ForbiddenException(
+        'Bạn chưa được ghi danh vào môn học của phòng thi này',
+      );
 
     // Cho vào phòng theo thời gian (mở->đóng), đồng thời tôn trọng thao tác thủ công:
-    // GV đóng sớm (DA_DONG) thì chặn; GV mở sớm (DANG_DIEN_RA) thì cho vào trước giờ mở.
+    // đóng sớm (DA_DONG) thì chặn; mở sớm (DANG_DIEN_RA) thì cho vào trước giờ mở.
     const now = new Date();
     if (phong.trangThai === TrangThaiPhongThi.DA_DONG)
       throw new BadRequestException('Phòng thi đã đóng');
@@ -60,7 +76,7 @@ export class ExamSessionsService {
     if (now < phong.moLuc && phong.trangThai !== TrangThaiPhongThi.DANG_DIEN_RA)
       throw new BadRequestException('Phòng thi chưa mở');
 
-    // Đã có bài làm trong phòng này?
+    // Đã có bài làm trong phòng này? -> resume với đúng đề đã bốc trước đó.
     const baiLamCu = await this.baiLamRepo.findOne({
       where: { maPhongThi: phong.maPhongThi, maNguoiDung },
     });
@@ -77,9 +93,18 @@ export class ExamSessionsService {
         );
     }
 
-    // Lấy ngân hàng câu hỏi của đề thi
+    // Bốc ngẫu nhiên 1 đề trong danh sách đề của phòng.
+    const dsDe = await this.phongThiBaiThiRepo.find({
+      where: { maPhongThi: phong.maPhongThi },
+    });
+    if (dsDe.length === 0)
+      throw new BadRequestException('Phòng thi chưa có đề thi');
+    const maBaiThiChon =
+      dsDe[Math.floor(Math.random() * dsDe.length)].maBaiThi;
+
+    // Lấy ngân hàng câu hỏi của đề đã bốc
     const dsCauHoi = await this.cauHoiBaiThiRepo.find({
-      where: { maBaiThi: phong.maBaiThi },
+      where: { maBaiThi: maBaiThiChon },
       order: { thuTu: 'ASC' },
     });
     if (dsCauHoi.length === 0)
@@ -94,7 +119,7 @@ export class ExamSessionsService {
           BaiLam,
           em.create(BaiLam, {
             maPhongThi: phong.maPhongThi,
-            maBaiThi: phong.maBaiThi,
+            maBaiThi: maBaiThiChon,
             maNguoiDung,
             thoiGianBatDau: now,
             // thoiGianKetThuc = thời điểm nộp thực tế, cập nhật khi nộp bài.
@@ -177,7 +202,7 @@ export class ExamSessionsService {
       maPhongThi: baiLam.maPhongThi,
       maBaiThi: baiLam.maBaiThi,
       tenDeThi: baiLam.baiThi.tieuDe,
-      tenMonHoc: baiLam.baiThi.monHoc?.tenMonHoc ?? null,
+      tenMonHoc: baiLam.baiThi.monHocHocKy?.monHoc?.tenMonHoc ?? null,
       trangThai: baiLam.trangThai,
       thoiGianBatDau: baiLam.thoiGianBatDau,
       hanNop: baiLam.phongThi.dongLuc,
@@ -385,7 +410,7 @@ export class ExamSessionsService {
   private async layBaiLamCuaToi(maBaiLam: number, maNguoiDung: number) {
     const baiLam = await this.baiLamRepo.findOne({
       where: { maBaiLam },
-      relations: { phongThi: true, baiThi: { monHoc: true } },
+      relations: { phongThi: true, baiThi: { monHocHocKy: { monHoc: true } } },
     });
     if (!baiLam) throw new NotFoundException('Không tìm thấy bài làm');
     if (baiLam.maNguoiDung !== maNguoiDung)
