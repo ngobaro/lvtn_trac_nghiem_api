@@ -11,6 +11,7 @@ import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { QuerySubjectDto } from './dto/query-subject.dto';
 import { CauHoi } from '../questions/entities/cau-hoi.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
+import { PhanCongGiangDay } from '../teaching-assignments/entities/phan-cong-giang-day.entity';
 
 // Môn học là danh mục chung do Admin quản lý — không còn scoping theo owner.
 @Injectable()
@@ -20,7 +21,10 @@ export class SubjectsService {
     private readonly monHocRepo: Repository<MonHoc>,
   ) {}
 
-  async findAll(query: QuerySubjectDto) {
+  // maGiaoVien != undefined => chỉ trả các môn mà giáo viên này được phân dạy
+  // trong ít nhất 1 học kỳ (qua PHAN_CONG_GIANG_DAY -> MON_HOC_HOC_KY). Admin
+  // (undefined) thấy toàn bộ danh mục.
+  async findAll(query: QuerySubjectDto, maGiaoVien?: number) {
     const { page = 1, limit = 10, search, laHoatDong } = query;
 
     const qb = this.monHocRepo.createQueryBuilder('m');
@@ -30,6 +34,24 @@ export class SubjectsService {
       qb.andWhere('(m.tenMonHoc LIKE :s OR m.maMon LIKE :s)', {
         s: `%${search}%`,
       });
+
+    if (maGiaoVien !== undefined) {
+      qb.andWhere((qb2) => {
+        const sub = qb2
+          .subQuery()
+          .select('1')
+          .from(PhanCongGiangDay, 'pc')
+          .innerJoin(
+            MonHocHocKy,
+            'mhhk',
+            'mhhk.maMonHocHocKy = pc.maMonHocHocKy',
+          )
+          .where('mhhk.maMonHoc = m.maMonHoc')
+          .andWhere('pc.maGiaoVien = :maGiaoVien')
+          .getQuery();
+        return `EXISTS ${sub}`;
+      }).setParameter('maGiaoVien', maGiaoVien);
+    }
 
     const [items, total] = await qb
       .orderBy('m.maMonHoc', 'DESC')
