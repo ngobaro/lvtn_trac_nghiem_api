@@ -43,6 +43,8 @@ export class UsersService {
   async findAll(query: QueryUserDto) {
     const { page = 1, limit = 10, vaiTro, laHoatDong, search } = query;
     const qb = this.repo.createQueryBuilder('u');
+    // Luôn ẩn tài khoản Quản trị viên khỏi màn hình quản lý người dùng.
+    qb.andWhere('u.vaiTro != :adminRole', { adminRole: VaiTro.QUAN_TRI_VIEN });
     if (vaiTro) qb.andWhere('u.vaiTro = :vaiTro', { vaiTro });
     if (laHoatDong !== undefined)
       qb.andWhere('u.laHoatDong = :laHoatDong', { laHoatDong });
@@ -60,7 +62,10 @@ export class UsersService {
 
   async findOne(id: number) {
     const user = await this.repo.findOne({ where: { maNguoiDung: id } });
-    if (!user) throw new NotFoundException('Người dùng không tồn tại');
+    // Ẩn cả admin: không cho xem/sửa/khóa/xóa tài khoản Quản trị viên qua module này.
+    // update/updateStatus/remove đều gọi findOne trước nên được chặn ở một chỗ.
+    if (!user || user.vaiTro === VaiTro.QUAN_TRI_VIEN)
+      throw new NotFoundException('Người dùng không tồn tại');
     return user;
   }
 
@@ -94,6 +99,9 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto) {
+    if (dto.vaiTro === VaiTro.QUAN_TRI_VIEN)
+      throw new BadRequestException('Không thể tạo tài khoản Quản trị viên');
+
     const exists = await this.repo.findOne({ where: { email: dto.email } });
     if (exists) throw new BadRequestException('Email đã tồn tại');
 
@@ -118,8 +126,11 @@ export class UsersService {
   async importNhieu(dto: ImportUsersDto) {
     const ketQua = await this.kiemTraDanhSach(dto.danhSach);
 
-    const danhSachBoQua: { tenNguoiDung: string; email: string; lyDo: string }[] =
-      [];
+    const danhSachBoQua: {
+      tenNguoiDung: string;
+      email: string;
+      lyDo: string;
+    }[] = [];
     let soLuongTao = 0;
 
     for (const dong of ketQua) {

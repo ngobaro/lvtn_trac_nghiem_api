@@ -1,6 +1,6 @@
 import {
   IsEmail,
-  IsEnum,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   MaxLength,
@@ -16,7 +16,9 @@ export class CreateUserDto {
   @IsEmail({}, { message: 'Email không hợp lệ' })
   email: string;
 
-  @IsEnum(VaiTro, { message: 'Vai trò không hợp lệ' })
+  @IsIn([VaiTro.HOC_SINH, VaiTro.GIAO_VIEN], {
+    message: 'Vai trò không hợp lệ',
+  })
   vaiTro: VaiTro;
 
   // Mật khẩu khởi tạo. Nếu bỏ trống sẽ dùng mật khẩu mặc định.

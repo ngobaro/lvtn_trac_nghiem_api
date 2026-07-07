@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsOptional, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, MaxLength } from 'class-validator';
 import { VaiTro } from '../../../common/enums/vai-tro.enum';
 
 export class UpdateUserDto {
@@ -7,7 +7,9 @@ export class UpdateUserDto {
   tenNguoiDung?: string;
 
   @IsOptional()
-  @IsEnum(VaiTro, { message: 'Vai trò không hợp lệ' })
+  @IsIn([VaiTro.HOC_SINH, VaiTro.GIAO_VIEN], {
+    message: 'Vai trò không hợp lệ',
+  })
   vaiTro?: VaiTro;
 
   @IsOptional()
