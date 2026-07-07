@@ -10,6 +10,7 @@ import {
 import { TrangThaiBaiLam } from '../../../common/enums/trang-thai-bai-lam.enum';
 import { PhongThi } from '../../exam-rooms/entities/phong-thi.entity';
 import { BaiThi } from '../../exams/entities/bai-thi.entity';
+import { NguoiDung } from '../../auth/entities/nguoi-dung.entity';
 import { CauHoiBaiLam } from './cau-hoi-bai-lam.entity';
 
 // Mỗi học sinh chỉ có 1 bài làm trong 1 phòng
@@ -41,13 +42,20 @@ export class BaiLam {
   })
   trangThai: TrangThaiBaiLam;
 
-  @ManyToOne(() => PhongThi)
+  // Dữ liệu lịch sử: chặn xóa cứng phòng thi khi còn bài làm (phòng là Tier 1 xóa mềm).
+  @ManyToOne(() => PhongThi, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'maPhongThi' })
   phongThi: PhongThi;
 
-  @ManyToOne(() => BaiThi)
+  // Chốt ở DB: không xóa đề thi khi đã có bài làm.
+  @ManyToOne(() => BaiThi, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'maBaiThi' })
   baiThi: BaiThi;
+
+  // Chặn xóa cứng học sinh khi còn bài làm (chống mồ côi); cột NOT NULL nên dùng RESTRICT.
+  @ManyToOne(() => NguoiDung, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'maNguoiDung' })
+  nguoiDung: NguoiDung;
 
   @OneToMany(() => CauHoiBaiLam, (chbl) => chbl.baiLam, { cascade: true })
   cauHoiBaiLams: CauHoiBaiLam[];
