@@ -9,6 +9,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { QuerySubjectDto } from './dto/query-subject.dto';
+import { CauHoi } from '../questions/entities/cau-hoi.entity';
+import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 
 // Môn học là danh mục chung do Admin quản lý — không còn scoping theo owner.
 @Injectable()
@@ -67,12 +69,38 @@ export class SubjectsService {
     }
   }
 
-  // Xóa mềm để không vỡ khóa ngoại với câu hỏi / môn-học-kỳ đang tham chiếu.
+  // Xóa: nếu môn học CHƯA có dữ liệu liên quan -> xóa cứng hoàn toàn khỏi DB;
+  // nếu còn tham chiếu (câu hỏi / môn-học-kỳ) -> xóa mềm (laHoatDong=false)
+  // để không vỡ khóa ngoại và giữ lịch sử.
   async remove(id: number) {
     const monHoc = await this.findOne(id);
-    monHoc.laHoatDong = false;
-    await this.monHocRepo.save(monHoc);
-    return null;
+    const em = this.monHocRepo.manager;
+
+    // Các bảng tham chiếu trực tiếp tới MON_HOC.maMonHoc cần kiểm tra.
+    const bangThamChieu: [Function, string][] = [
+      [CauHoi, 'maMonHoc'],
+      [MonHocHocKy, 'maMonHoc'],
+    ];
+
+    let coDuLieuLienQuan = false;
+    for (const [entity, cot] of bangThamChieu) {
+      const soLuong = await em.count(entity, { where: { [cot]: id } });
+      if (soLuong > 0) {
+        coDuLieuLienQuan = true;
+        break;
+      }
+    }
+
+    if (coDuLieuLienQuan) {
+      // Còn dữ liệu tham chiếu -> xóa mềm.
+      monHoc.laHoatDong = false;
+      await this.monHocRepo.save(monHoc);
+      return { daXoaCung: false };
+    }
+
+    // Chưa có dữ liệu liên quan -> xóa cứng hoàn toàn khỏi DB.
+    await this.monHocRepo.delete(id);
+    return { daXoaCung: true };
   }
 
   async updateStatus(id: number, laHoatDong: boolean) {
