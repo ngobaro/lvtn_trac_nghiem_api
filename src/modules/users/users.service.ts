@@ -9,6 +9,14 @@ import * as bcrypt from 'bcrypt';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { NhaCungCapXacThuc } from '../auth/entities/nha-cung-cap-xac-thuc.entity';
 import { NhaCungCap } from '../../common/enums/nha-cung-cap.enum';
+import { CauHoi } from '../questions/entities/cau-hoi.entity';
+import { BaiThi } from '../exams/entities/bai-thi.entity';
+import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
+import { PhanCongGiangDay } from '../teaching-assignments/entities/phan-cong-giang-day.entity';
+import { GhiDanh } from '../enrollments/entities/ghi-danh.entity';
+import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
+import { KetQua } from '../results/entities/ket-qua.entity';
+import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
 import { QueryUserDto } from './dto/query-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -82,11 +90,47 @@ export class UsersService {
     return this.repo.save(user);
   }
 
-  // Xóa mềm: khóa tài khoản, giữ dữ liệu tham chiếu (đề/kết quả/ghi danh).
+  // Xóa: nếu tài khoản CHƯA có dữ liệu liên quan -> xóa cứng hoàn toàn khỏi DB
+  // (kèm bản ghi xác thực); nếu còn tham chiếu (đề/kết quả/ghi danh/…) -> xóa mềm
+  // để giữ lịch sử, tránh mồ côi dữ liệu.
   async remove(id: number) {
     const user = await this.findOne(id);
-    user.laHoatDong = false;
-    await this.repo.save(user);
-    return null;
+    const em = this.repo.manager;
+
+    // Các bảng tham chiếu tới người dùng cần kiểm tra. Bỏ qua
+    // NHA_CUNG_CAP_XAC_THUC vì đó là bản ghi xác thực thuộc chính tài khoản.
+    const bangThamChieu: [Function, string][] = [
+      [CauHoi, 'taoBoi'],
+      [BaiThi, 'taoBoi'],
+      [PhongThi, 'taoBoi'],
+      [PhanCongGiangDay, 'maGiaoVien'],
+      [GhiDanh, 'maHocSinh'],
+      [BaiLam, 'maNguoiDung'],
+      [KetQua, 'maNguoiDung'],
+      [ThanhVienPhong, 'maNguoiDung'],
+    ];
+
+    let coDuLieuLienQuan = false;
+    for (const [entity, cot] of bangThamChieu) {
+      const soLuong = await em.count(entity, { where: { [cot]: id } });
+      if (soLuong > 0) {
+        coDuLieuLienQuan = true;
+        break;
+      }
+    }
+
+    if (coDuLieuLienQuan) {
+      // Còn dữ liệu tham chiếu -> xóa mềm (khóa tài khoản).
+      user.laHoatDong = false;
+      await this.repo.save(user);
+      return { daXoaCung: false };
+    }
+
+    // Chưa có dữ liệu liên quan -> xóa cứng hoàn toàn khỏi DB.
+    await em.transaction(async (m) => {
+      await m.delete(NhaCungCapXacThuc, { maNguoiDung: id });
+      await m.delete(NguoiDung, { maNguoiDung: id });
+    });
+    return { daXoaCung: true };
   }
 }
