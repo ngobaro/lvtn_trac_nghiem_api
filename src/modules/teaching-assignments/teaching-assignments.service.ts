@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { PhanCongGiangDay } from './entities/phan-cong-giang-day.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { HocKy } from '../semesters/entities/hoc-ky.entity';
@@ -12,6 +12,7 @@ import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
+import { BulkTeachingAssignmentDto } from './dto/bulk-teaching-assignment.dto';
 import { QueryTeachingAssignmentDto } from './dto/query-teaching-assignment.dto';
 
 @Injectable()
@@ -88,6 +89,42 @@ export class TeachingAssignmentsService {
 
     const pc = this.phanCongRepo.create(dto);
     return this.phanCongRepo.save(pc);
+  }
+
+  // Phân công hàng loạt: bỏ qua giáo viên đã được phân dạy trước đó.
+  async createBulk(dto: BulkTeachingAssignmentDto) {
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy: dto.maMonHocHocKy },
+      relations: { hocKy: true },
+    });
+    if (!mhhk)
+      throw new BadRequestException('Môn học của học kỳ không tồn tại');
+    if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể phân công giáo viên',
+      );
+
+    const giaoViens = await this.nguoiDungRepo.find({
+      where: { maNguoiDung: In(dto.maGiaoViens), vaiTro: VaiTro.GIAO_VIEN },
+    });
+    const idHopLe = new Set(giaoViens.map((g) => g.maNguoiDung));
+
+    const daPhan = await this.phanCongRepo.find({
+      where: { maMonHocHocKy: dto.maMonHocHocKy },
+    });
+    const daCo = new Set(daPhan.map((p) => p.maGiaoVien));
+
+    const canThem = dto.maGiaoViens
+      .filter((id) => idHopLe.has(id) && !daCo.has(id))
+      .map((maGiaoVien) =>
+        this.phanCongRepo.create({
+          maMonHocHocKy: dto.maMonHocHocKy,
+          maGiaoVien,
+        }),
+      );
+
+    if (canThem.length) await this.phanCongRepo.save(canThem);
+    return { soLuongPhanCong: canThem.length };
   }
 
   // Hủy phân công là xóa cứng bản ghi phân công (không phải dữ liệu lịch sử).

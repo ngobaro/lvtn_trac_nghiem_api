@@ -15,6 +15,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
+import { BulkTeachingAssignmentDto } from './dto/bulk-teaching-assignment.dto';
 import { QueryTeachingAssignmentDto } from './dto/query-teaching-assignment.dto';
 
 @Controller('teaching-assignments')
@@ -35,6 +36,12 @@ export class TeachingAssignmentsController {
   @ResponseMessage('Phân công giảng dạy thành công')
   create(@Body() dto: CreateTeachingAssignmentDto) {
     return this.teachingAssignmentsService.create(dto);
+  }
+
+  @Post('bulk')
+  @ResponseMessage('Phân công giảng dạy hàng loạt thành công')
+  createBulk(@Body() dto: BulkTeachingAssignmentDto) {
+    return this.teachingAssignmentsService.createBulk(dto);
   }
 
   @Delete(':id')
