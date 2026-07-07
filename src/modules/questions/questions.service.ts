@@ -37,7 +37,8 @@ export class QuestionsService {
 
         const qb = this.cauHoiRepo
             .createQueryBuilder('ch')
-            .leftJoinAndSelect('ch.luaChons', 'lc');
+            .leftJoinAndSelect('ch.luaChons', 'lc')
+            .leftJoinAndSelect('ch.nguoiTao', 'nguoiTao');
 
         if (taoBoi !== undefined)
             qb.andWhere('ch.taoBoi = :taoBoi', { taoBoi });
@@ -65,7 +66,7 @@ export class QuestionsService {
 
         const cauHoi = await this.cauHoiRepo.findOne({
             where,
-            relations: { luaChons: true },
+            relations: { luaChons: true, nguoiTao: true },
         });
         if (!cauHoi) throw new NotFoundException('Câu hỏi không tồn tại');
 
