@@ -4,12 +4,15 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { PhanCongGiangDay } from './entities/phan-cong-giang-day.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
+import { HocKy } from '../semesters/entities/hoc-ky.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
+import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
+import { BulkTeachingAssignmentDto } from './dto/bulk-teaching-assignment.dto';
 import { QueryTeachingAssignmentDto } from './dto/query-teaching-assignment.dto';
 
 @Injectable()
@@ -21,6 +24,8 @@ export class TeachingAssignmentsService {
     private readonly mhhkRepo: Repository<MonHocHocKy>,
     @InjectRepository(NguoiDung)
     private readonly nguoiDungRepo: Repository<NguoiDung>,
+    @InjectRepository(BaiThi)
+    private readonly baiThiRepo: Repository<BaiThi>,
   ) {}
 
   async findAll(query: QueryTeachingAssignmentDto) {
@@ -39,12 +44,34 @@ export class TeachingAssignmentsService {
     return qb.orderBy('pc.maPhanCong', 'DESC').getMany();
   }
 
+  // Học kỳ đã kết thúc thì khóa mọi thay đổi phân công.
+  private daKetThuc(hocKy: HocKy): boolean {
+    const raw = hocKy.ngayKetThuc as unknown as string | Date;
+    const kt =
+      typeof raw === 'string' ? raw.slice(0, 10) : raw.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10) >= kt;
+  }
+
+  private async kiemTraHocKyConMo(maMonHocHocKy: number, hanhDong: string) {
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy },
+      relations: { hocKy: true },
+    });
+    if (mhhk?.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(`Học kỳ đã kết thúc, không thể ${hanhDong}`);
+  }
+
   async create(dto: CreateTeachingAssignmentDto) {
     const mhhk = await this.mhhkRepo.findOne({
       where: { maMonHocHocKy: dto.maMonHocHocKy },
+      relations: { hocKy: true },
     });
     if (!mhhk)
       throw new BadRequestException('Môn học của học kỳ không tồn tại');
+    if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể phân công giáo viên',
+      );
 
     const gv = await this.nguoiDungRepo.findOne({
       where: { maNguoiDung: dto.maGiaoVien },
@@ -64,13 +91,66 @@ export class TeachingAssignmentsService {
     return this.phanCongRepo.save(pc);
   }
 
+  // Phân công hàng loạt: bỏ qua giáo viên đã được phân dạy trước đó.
+  async createBulk(dto: BulkTeachingAssignmentDto) {
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy: dto.maMonHocHocKy },
+      relations: { hocKy: true },
+    });
+    if (!mhhk)
+      throw new BadRequestException('Môn học của học kỳ không tồn tại');
+    if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể phân công giáo viên',
+      );
+
+    const giaoViens = await this.nguoiDungRepo.find({
+      where: { maNguoiDung: In(dto.maGiaoViens), vaiTro: VaiTro.GIAO_VIEN },
+    });
+    const idHopLe = new Set(giaoViens.map((g) => g.maNguoiDung));
+
+    const daPhan = await this.phanCongRepo.find({
+      where: { maMonHocHocKy: dto.maMonHocHocKy },
+    });
+    const daCo = new Set(daPhan.map((p) => p.maGiaoVien));
+
+    const canThem = dto.maGiaoViens
+      .filter((id) => idHopLe.has(id) && !daCo.has(id))
+      .map((maGiaoVien) =>
+        this.phanCongRepo.create({
+          maMonHocHocKy: dto.maMonHocHocKy,
+          maGiaoVien,
+        }),
+      );
+
+    if (canThem.length) await this.phanCongRepo.save(canThem);
+    return { soLuongPhanCong: canThem.length };
+  }
+
   // Hủy phân công là xóa cứng bản ghi phân công (không phải dữ liệu lịch sử).
   async remove(id: number) {
     const pc = await this.phanCongRepo.findOne({
       where: { maPhanCong: id },
     });
     if (!pc) throw new NotFoundException('Phân công không tồn tại');
+    await this.kiemTraHocKyConMo(pc.maMonHocHocKy, 'hủy phân công giáo viên');
+    await this.kiemTraPhanCongCoLichSu(pc.maMonHocHocKy, pc.maGiaoVien);
     await this.phanCongRepo.remove(pc);
     return null;
+  }
+
+  // chặn hủy phân công nếu giáo viên đã tạo đề thi trong môn-học-kỳ đó
+  private async kiemTraPhanCongCoLichSu(
+    maMonHocHocKy: number,
+    maGiaoVien: number,
+  ) {
+    const soDe = await this.baiThiRepo.countBy({
+      maMonHocHocKy,
+      taoBoi: maGiaoVien,
+    });
+    if (soDe > 0)
+      throw new BadRequestException(
+        'Không thể hủy phân công: giáo viên đã tạo đề thi trong môn học của học kỳ này',
+      );
   }
 }

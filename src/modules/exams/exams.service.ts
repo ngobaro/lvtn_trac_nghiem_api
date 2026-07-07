@@ -220,9 +220,15 @@ export class ExamsService {
   async remove(id: number, taoBoi?: number) {
     const baiThi = await this.findOne(id, taoBoi);
 
-    // Đề đã đưa vào phòng thi thì không cho xóa (giữ toàn vẹn phòng/bài làm/kết quả).
-    const soPhong = await this.phongThiBaiThiRepo.countBy({ maBaiThi: id });
-    if (soPhong > 0)
+    // chỉ xóa được đề nháp chưa dùng. Đề đã có bài làm hoặc đã vào
+    // phòng thi thì chặn (giữ toàn vẹn phòng/bài làm/kết quả); trả lỗi tiếng Việt
+    // thân thiện thay vì để FK RESTRICT ném lỗi thô.
+    const { daThi, coPhong } = await this.kiemTraDaSuDung(id);
+    if (daThi)
+      throw new BadRequestException(
+        'Không thể xóa đề thi đã có học sinh làm bài',
+      );
+    if (coPhong)
       throw new BadRequestException('Không thể xóa đề thi đã sử dụng');
 
     await this.baiThiRepo.remove(baiThi);

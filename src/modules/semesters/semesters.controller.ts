@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   Patch,
@@ -19,6 +18,7 @@ import { CreateSemesterDto } from './dto/create-semester.dto';
 import { UpdateSemesterDto } from './dto/update-semester.dto';
 import { QuerySemesterDto } from './dto/query-semester.dto';
 
+// Học kỳ luôn tồn tại để xem lại lịch sử — không có endpoint xóa.
 @Controller('semesters')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class SemestersController {
@@ -51,22 +51,5 @@ export class SemestersController {
   @ResponseMessage('Cập nhật học kỳ thành công')
   update(@Param('id') id: number, @Body() dto: UpdateSemesterDto) {
     return this.semestersService.update(+id, dto);
-  }
-
-  @Patch(':id/status')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
-  @ResponseMessage('Cập nhật trạng thái học kỳ thành công')
-  updateStatus(
-    @Param('id') id: number,
-    @Body('laHoatDong') laHoatDong: boolean,
-  ) {
-    return this.semestersService.updateStatus(+id, laHoatDong);
-  }
-
-  @Delete(':id')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
-  @ResponseMessage('Xóa học kỳ thành công')
-  remove(@Param('id') id: number) {
-    return this.semestersService.remove(+id);
   }
 }

@@ -36,6 +36,7 @@ export class QuestionsController {
     }
 
     @Post()
+    @Roles(VaiTro.GIAO_VIEN)
     @ResponseMessage('Tạo câu hỏi thành công')
     create(@Body() dto: CreateQuestionDto, @CurrentUser() user: CurrentUserPayload) {
         return this.questionsService.create(dto, user.maNguoiDung);
@@ -43,6 +44,7 @@ export class QuestionsController {
 
     // Tải lên file Word/PDF -> AI trích xuất câu hỏi nháp (KHÔNG lưu DB).
     @Post('import')
+    @Roles(VaiTro.GIAO_VIEN)
     @ResponseMessage('Phân tích file thành công')
     @UseInterceptors(FileInterceptor('file', {
         storage: memoryStorage(),
@@ -71,6 +73,7 @@ export class QuestionsController {
 
     // Lưu hàng loạt câu hỏi đã được người dùng xem trước & chỉnh sửa.
     @Post('bulk')
+    @Roles(VaiTro.GIAO_VIEN)
     @ResponseMessage('Lưu danh sách câu hỏi thành công')
     createBulk(
         @Body() dto: BulkCreateQuestionsDto,
@@ -80,6 +83,7 @@ export class QuestionsController {
     }
 
     @Patch(':id')
+    @Roles(VaiTro.GIAO_VIEN)
     @ResponseMessage('Cập nhật câu hỏi thành công')
     update(
         @Param('id') id: number,
@@ -91,6 +95,7 @@ export class QuestionsController {
     }
 
     @Delete(':id')
+    @Roles(VaiTro.GIAO_VIEN)
     @ResponseMessage('Xóa câu hỏi thành công')
     remove(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
         const taoBoi = user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
@@ -98,6 +103,7 @@ export class QuestionsController {
     }
 
     @Post(':id/image')
+    @Roles(VaiTro.GIAO_VIEN)
     @ResponseMessage('Cập nhật ảnh câu hỏi thành công')
     @UseInterceptors(FileInterceptor('file', {
         storage: memoryStorage(),

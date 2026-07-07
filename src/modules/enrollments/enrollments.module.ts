@@ -5,9 +5,12 @@ import { EnrollmentsController } from './enrollments.controller';
 import { GhiDanh } from './entities/ghi-danh.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
+import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([GhiDanh, MonHocHocKy, NguoiDung])],
+  imports: [
+    TypeOrmModule.forFeature([GhiDanh, MonHocHocKy, NguoiDung, BaiLam]),
+  ],
   controllers: [EnrollmentsController],
   providers: [EnrollmentsService],
 })

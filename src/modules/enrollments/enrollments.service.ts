@@ -7,7 +7,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { GhiDanh } from './entities/ghi-danh.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
+import { HocKy } from '../semesters/entities/hoc-ky.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
+import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { BulkEnrollmentDto } from './dto/bulk-enrollment.dto';
@@ -22,6 +24,8 @@ export class EnrollmentsService {
     private readonly mhhkRepo: Repository<MonHocHocKy>,
     @InjectRepository(NguoiDung)
     private readonly nguoiDungRepo: Repository<NguoiDung>,
+    @InjectRepository(BaiLam)
+    private readonly baiLamRepo: Repository<BaiLam>,
   ) {}
 
   async findAll(query: QueryEnrollmentDto) {
@@ -84,14 +88,62 @@ export class EnrollmentsService {
   async remove(id: number) {
     const gd = await this.ghiDanhRepo.findOne({ where: { maGhiDanh: id } });
     if (!gd) throw new NotFoundException('Ghi danh không tồn tại');
+    await this.kiemTraHocKyConMo(gd.maMonHocHocKy, 'hủy ghi danh học sinh');
+    await this.kiemTraGhiDanhCoLichSu(gd.maMonHocHocKy, gd.maHocSinh);
     await this.ghiDanhRepo.remove(gd);
     return null;
   }
 
+  // Guard hybrid: chặn hủy ghi danh nếu học sinh đã có bài làm trong phòng thi
+  // thuộc môn-học-kỳ đó (bài làm là dữ liệu lịch sử — không được phá âm thầm).
+  private async kiemTraGhiDanhCoLichSu(
+    maMonHocHocKy: number,
+    maHocSinh: number,
+  ) {
+    const soBaiLam = await this.baiLamRepo
+      .createQueryBuilder('bl')
+      .innerJoin('bl.phongThi', 'pt')
+      .where('bl.maNguoiDung = :hs', { hs: maHocSinh })
+      .andWhere('pt.maMonHocHocKy = :mhhk', { mhhk: maMonHocHocKy })
+      .getCount();
+    if (soBaiLam > 0)
+      throw new BadRequestException(
+        'Không thể hủy ghi danh: học sinh đã có bài làm trong môn học của học kỳ này',
+      );
+  }
+
+  // Học kỳ đã kết thúc thì khóa mọi thay đổi ghi danh.
+  private daKetThuc(hocKy: HocKy): boolean {
+    const raw = hocKy.ngayKetThuc as unknown as string | Date;
+    const kt =
+      typeof raw === 'string'
+        ? raw.slice(0, 10)
+        : raw.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10) >= kt;
+  }
+
   private async kiemTraMonHocHocKy(maMonHocHocKy: number) {
-    const mhhk = await this.mhhkRepo.findOne({ where: { maMonHocHocKy } });
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy },
+      relations: { hocKy: true },
+    });
     if (!mhhk)
       throw new BadRequestException('Môn học của học kỳ không tồn tại');
+    if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể ghi danh học sinh',
+      );
+  }
+
+  private async kiemTraHocKyConMo(maMonHocHocKy: number, hanhDong: string) {
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy },
+      relations: { hocKy: true },
+    });
+    if (mhhk?.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        `Học kỳ đã kết thúc, không thể ${hanhDong}`,
+      );
   }
 
   private async kiemTraHocSinh(maHocSinh: number) {

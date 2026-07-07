@@ -13,6 +13,8 @@ import { SubjectsService } from './subjects.service';
 import { RolesGuard } from 'src/common/guards/roles.guard';
 import { JwtAuthGuard } from 'src/common/guards/jwt-auth.guard';
 import { Roles } from 'src/common/decorators/roles.decorator';
+import { CurrentUser } from 'src/common/decorators/current-user.decorator';
+import type { CurrentUserPayload } from 'src/common/interfaces/current-user.interface';
 import { VaiTro } from 'src/common/enums/vai-tro.enum';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
@@ -28,8 +30,14 @@ export class SubjectsController {
   @Get()
   @Roles(VaiTro.HOC_SINH, VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy danh sách môn học thành công')
-  findAll(@Query() query: QuerySubjectDto) {
-    return this.subjectsService.findAll(query);
+  findAll(
+    @Query() query: QuerySubjectDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    // GV chỉ thấy môn mình được phân dạy; Admin/HS thấy toàn bộ.
+    const maGiaoVien =
+      user.vaiTro === VaiTro.GIAO_VIEN ? user.maNguoiDung : undefined;
+    return this.subjectsService.findAll(query, maGiaoVien);
   }
 
   @Get(':id')
