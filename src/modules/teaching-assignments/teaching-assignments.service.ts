@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { PhanCongGiangDay } from './entities/phan-cong-giang-day.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
+import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { CreateTeachingAssignmentDto } from './dto/create-teaching-assignment.dto';
 import { QueryTeachingAssignmentDto } from './dto/query-teaching-assignment.dto';
@@ -21,6 +22,8 @@ export class TeachingAssignmentsService {
     private readonly mhhkRepo: Repository<MonHocHocKy>,
     @InjectRepository(NguoiDung)
     private readonly nguoiDungRepo: Repository<NguoiDung>,
+    @InjectRepository(BaiThi)
+    private readonly baiThiRepo: Repository<BaiThi>,
   ) {}
 
   async findAll(query: QueryTeachingAssignmentDto) {
@@ -70,7 +73,23 @@ export class TeachingAssignmentsService {
       where: { maPhanCong: id },
     });
     if (!pc) throw new NotFoundException('Phân công không tồn tại');
+    await this.kiemTraPhanCongCoLichSu(pc.maMonHocHocKy, pc.maGiaoVien);
     await this.phanCongRepo.remove(pc);
     return null;
+  }
+
+  // chặn hủy phân công nếu giáo viên đã tạo đề thi trong môn-học-kỳ đó
+  private async kiemTraPhanCongCoLichSu(
+    maMonHocHocKy: number,
+    maGiaoVien: number,
+  ) {
+    const soDe = await this.baiThiRepo.countBy({
+      maMonHocHocKy,
+      taoBoi: maGiaoVien,
+    });
+    if (soDe > 0)
+      throw new BadRequestException(
+        'Không thể hủy phân công: giáo viên đã tạo đề thi trong môn học của học kỳ này',
+      );
   }
 }
