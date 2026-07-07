@@ -8,6 +8,7 @@ import { In, Repository } from 'typeorm';
 import { GhiDanh } from './entities/ghi-danh.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
+import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { BulkEnrollmentDto } from './dto/bulk-enrollment.dto';
@@ -22,6 +23,8 @@ export class EnrollmentsService {
     private readonly mhhkRepo: Repository<MonHocHocKy>,
     @InjectRepository(NguoiDung)
     private readonly nguoiDungRepo: Repository<NguoiDung>,
+    @InjectRepository(BaiLam)
+    private readonly baiLamRepo: Repository<BaiLam>,
   ) {}
 
   async findAll(query: QueryEnrollmentDto) {
@@ -84,8 +87,27 @@ export class EnrollmentsService {
   async remove(id: number) {
     const gd = await this.ghiDanhRepo.findOne({ where: { maGhiDanh: id } });
     if (!gd) throw new NotFoundException('Ghi danh không tồn tại');
+    await this.kiemTraGhiDanhCoLichSu(gd.maMonHocHocKy, gd.maHocSinh);
     await this.ghiDanhRepo.remove(gd);
     return null;
+  }
+
+  // Guard hybrid: chặn hủy ghi danh nếu học sinh đã có bài làm trong phòng thi
+  // thuộc môn-học-kỳ đó (bài làm là dữ liệu lịch sử — không được phá âm thầm).
+  private async kiemTraGhiDanhCoLichSu(
+    maMonHocHocKy: number,
+    maHocSinh: number,
+  ) {
+    const soBaiLam = await this.baiLamRepo
+      .createQueryBuilder('bl')
+      .innerJoin('bl.phongThi', 'pt')
+      .where('bl.maNguoiDung = :hs', { hs: maHocSinh })
+      .andWhere('pt.maMonHocHocKy = :mhhk', { mhhk: maMonHocHocKy })
+      .getCount();
+    if (soBaiLam > 0)
+      throw new BadRequestException(
+        'Không thể hủy ghi danh: học sinh đã có bài làm trong môn học của học kỳ này',
+      );
   }
 
   private async kiemTraMonHocHocKy(maMonHocHocKy: number) {
