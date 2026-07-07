@@ -1,24 +1,19 @@
-import {
-  IsNotEmpty,
-  IsOptional,
-  IsDateString,
-  MaxLength,
-} from 'class-validator';
+import { IsNotEmpty, IsDateString, MaxLength } from 'class-validator';
 
 export class CreateSemesterDto {
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Tên học kỳ là bắt buộc' })
   @MaxLength(100, { message: 'Tên học kỳ không được vượt quá 100 ký tự' })
   tenHocKy: string;
 
-  @IsNotEmpty()
+  @IsNotEmpty({ message: 'Năm học là bắt buộc' })
   @MaxLength(20, { message: 'Năm học không được vượt quá 20 ký tự' })
   namHoc: string;
 
-  @IsOptional()
-  @IsDateString()
-  ngayBatDau?: string;
+  @IsNotEmpty({ message: 'Ngày bắt đầu là bắt buộc' })
+  @IsDateString({}, { message: 'Ngày bắt đầu không hợp lệ' })
+  ngayBatDau: string;
 
-  @IsOptional()
-  @IsDateString()
-  ngayKetThuc?: string;
+  @IsNotEmpty({ message: 'Ngày kết thúc là bắt buộc' })
+  @IsDateString({}, { message: 'Ngày kết thúc không hợp lệ' })
+  ngayKetThuc: string;
 }

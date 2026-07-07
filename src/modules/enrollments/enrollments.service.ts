@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { GhiDanh } from './entities/ghi-danh.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
+import { HocKy } from '../semesters/entities/hoc-ky.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
@@ -87,6 +88,7 @@ export class EnrollmentsService {
   async remove(id: number) {
     const gd = await this.ghiDanhRepo.findOne({ where: { maGhiDanh: id } });
     if (!gd) throw new NotFoundException('Ghi danh không tồn tại');
+    await this.kiemTraHocKyConMo(gd.maMonHocHocKy, 'hủy ghi danh học sinh');
     await this.kiemTraGhiDanhCoLichSu(gd.maMonHocHocKy, gd.maHocSinh);
     await this.ghiDanhRepo.remove(gd);
     return null;
@@ -110,10 +112,38 @@ export class EnrollmentsService {
       );
   }
 
+  // Học kỳ đã kết thúc thì khóa mọi thay đổi ghi danh.
+  private daKetThuc(hocKy: HocKy): boolean {
+    const raw = hocKy.ngayKetThuc as unknown as string | Date;
+    const kt =
+      typeof raw === 'string'
+        ? raw.slice(0, 10)
+        : raw.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10) >= kt;
+  }
+
   private async kiemTraMonHocHocKy(maMonHocHocKy: number) {
-    const mhhk = await this.mhhkRepo.findOne({ where: { maMonHocHocKy } });
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy },
+      relations: { hocKy: true },
+    });
     if (!mhhk)
       throw new BadRequestException('Môn học của học kỳ không tồn tại');
+    if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể ghi danh học sinh',
+      );
+  }
+
+  private async kiemTraHocKyConMo(maMonHocHocKy: number, hanhDong: string) {
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy },
+      relations: { hocKy: true },
+    });
+    if (mhhk?.hocKy && this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        `Học kỳ đã kết thúc, không thể ${hanhDong}`,
+      );
   }
 
   private async kiemTraHocSinh(maHocSinh: number) {

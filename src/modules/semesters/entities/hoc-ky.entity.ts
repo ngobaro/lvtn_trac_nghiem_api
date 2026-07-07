@@ -1,6 +1,8 @@
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, Unique } from 'typeorm';
 
+// Không thể có 2 học kỳ trùng tên học kỳ và năm học (VD: "Học kỳ 1" · "2025-2026").
 @Entity('HOC_KY')
+@Unique('uq_hoc_ky_ten_nam', ['tenHocKy', 'namHoc'])
 export class HocKy {
   @PrimaryGeneratedColumn()
   maHocKy: number;
@@ -13,12 +15,9 @@ export class HocKy {
   @Column({ length: 20 })
   namHoc: string;
 
-  @Column({ type: 'date', nullable: true })
+  @Column({ type: 'date' })
   ngayBatDau: Date;
 
-  @Column({ type: 'date', nullable: true })
+  @Column({ type: 'date' })
   ngayKetThuc: Date;
-
-  @Column({ default: true })
-  laHoatDong: boolean;
 }

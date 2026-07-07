@@ -65,6 +65,15 @@ export class SubjectOfferingsService {
     return mhhk;
   }
 
+  // Học kỳ đã kết thúc (today >= ngayKetThuc) thì khóa mọi thay đổi môn học.
+  private daKetThuc(hocKy: HocKy): boolean {
+    // TypeORM trả cột `date` dưới dạng chuỗi 'YYYY-MM-DD' lúc chạy.
+    const raw = hocKy.ngayKetThuc as unknown as string | Date;
+    const kt =
+      typeof raw === 'string' ? raw.slice(0, 10) : raw.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10) >= kt;
+  }
+
   async create(dto: CreateSubjectOfferingDto) {
     const monHoc = await this.monHocRepo.findOne({
       where: { maMonHoc: dto.maMonHoc },
@@ -74,12 +83,21 @@ export class SubjectOfferingsService {
       where: { maHocKy: dto.maHocKy },
     });
     if (!hocKy) throw new BadRequestException('Học kỳ không tồn tại');
+    if (this.daKetThuc(hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể mở thêm môn học',
+      );
 
     const daCo = await this.mhhkRepo.findOne({
       where: { maMonHoc: dto.maMonHoc, maHocKy: dto.maHocKy },
     });
-    if (daCo)
-      throw new BadRequestException('Môn học đã được mở trong học kỳ này');
+    if (daCo) {
+      // Đang mở → trùng. Đã gỡ (xóa mềm) → mở lại chính bản ghi cũ.
+      if (daCo.laHoatDong)
+        throw new BadRequestException('Môn học đã được mở trong học kỳ này');
+      daCo.laHoatDong = true;
+      return this.mhhkRepo.save(daCo);
+    }
 
     const mhhk = this.mhhkRepo.create(dto);
     return this.mhhkRepo.save(mhhk);
@@ -93,6 +111,10 @@ export class SubjectOfferingsService {
   // Xóa mềm.
   async remove(id: number) {
     const mhhk = await this.findOne(id);
+    if (this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể gỡ môn học',
+      );
     mhhk.laHoatDong = false;
     await this.mhhkRepo.save(mhhk);
     return null;
