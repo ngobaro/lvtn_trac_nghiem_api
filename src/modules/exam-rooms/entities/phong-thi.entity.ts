@@ -12,6 +12,7 @@ import { CheDoCauHoi } from '../../../common/enums/che-do-cau-hoi.enum';
 import { TrangThaiPhongThi } from '../../../common/enums/trang-thai-phong-thi.enum';
 import { ThanhVienPhong } from './thanh-vien-phong.entity';
 import { PhongThiBaiThi } from './phong-thi-bai-thi.entity';
+import { PhongThiHocSinh } from './phong-thi-hoc-sinh.entity';
 
 @Entity('PHONG_THI')
 export class PhongThi {
@@ -42,9 +43,6 @@ export class PhongThi {
   @Column({ type: 'datetime' })
   dongLuc: Date;
 
-  @Column({ type: 'int', nullable: true })
-  soNguoiThamGia: number;
-
   // Xóa mềm.
   @Column({ default: true })
   laHoatDong: boolean;
@@ -69,4 +67,7 @@ export class PhongThi {
 
   @OneToMany(() => PhongThiBaiThi, (ptbt) => ptbt.phongThi, { cascade: true })
   phongThiBaiThis: PhongThiBaiThi[];
+
+  @OneToMany(() => PhongThiHocSinh, (pths) => pths.phongThi, { cascade: true })
+  phongThiHocSinhs: PhongThiHocSinh[];
 }

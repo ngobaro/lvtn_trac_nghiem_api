@@ -63,6 +63,7 @@ export class ExamsService {
       relations: {
         cauHoiBaiThis: { cauHoi: { luaChons: true } },
         monHocHocKy: { monHoc: true, hocKy: true },
+        nguoiTao: true,
       },
       order: { cauHoiBaiThis: { thuTu: 'ASC' } },
     });

@@ -5,7 +5,6 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
-  IsOptional,
   Min,
   MaxLength,
 } from 'class-validator';
@@ -26,6 +25,13 @@ export class CreateExamRoomDto {
   @IsInt({ each: true })
   maBaiThis: number[];
 
+  // Danh sách học sinh được gán vào phòng (bắt buộc). HS chỉ thấy phòng mình
+  // được gán; mỗi HS chỉ được gán 1 phòng của mỗi môn-học-kỳ.
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsInt({ each: true })
+  maHocSinhs: number[];
+
   @IsEnum(CheDoCauHoi)
   cheDoCauHoi: CheDoCauHoi;
 
@@ -36,9 +42,4 @@ export class CreateExamRoomDto {
 
   @IsDateString()
   moLuc: string;
-
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  soNguoiThamGia?: number;
 }
