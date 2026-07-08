@@ -21,6 +21,7 @@ import { CreateExamRoomDto } from './dto/create-exam-room.dto';
 import { UpdateExamRoomDto } from './dto/update-exam-room.dto';
 import { UpdateExamRoomStatusDto } from './dto/update-exam-room-status.dto';
 import { QueryExamRoomDto } from './dto/query-exam-room.dto';
+import { QueryAssignedStudentsDto } from './dto/query-assigned-students.dto';
 
 @Controller('exam-rooms')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -40,6 +41,14 @@ export class ExamRoomsController {
   @ResponseMessage('Lấy danh sách phòng thi thành công')
   findAll(@Query() query: QueryExamRoomDto) {
     return this.examRoomsService.findAll(query);
+  }
+
+  // Admin: HS đã được gán vào phòng khác của môn-học-kỳ (để FE ẩn khỏi picker).
+  @Get('assigned-students')
+  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @ResponseMessage('Lấy danh sách học sinh đã gán thành công')
+  layHsDaGan(@Query() q: QueryAssignedStudentsDto) {
+    return this.examRoomsService.layHocSinhDaGan(q.maMonHocHocKy, q.excludePhongThi);
   }
 
   @Get(':id')

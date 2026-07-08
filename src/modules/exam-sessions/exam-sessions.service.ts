@@ -13,8 +13,8 @@ import { CauHoiBaiLam } from './entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from './entities/nguoi-dung-tra-loi.entity';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { PhongThiBaiThi } from '../exam-rooms/entities/phong-thi-bai-thi.entity';
+import { PhongThiHocSinh } from '../exam-rooms/entities/phong-thi-hoc-sinh.entity';
 import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
-import { GhiDanh } from '../enrollments/entities/ghi-danh.entity';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
 import { DapAn } from '../questions/entities/dap-an.entity';
@@ -42,13 +42,14 @@ export class ExamSessionsService {
     private phongThiBaiThiRepo: Repository<PhongThiBaiThi>,
     @InjectRepository(ThanhVienPhong)
     private thanhVienRepo: Repository<ThanhVienPhong>,
-    @InjectRepository(GhiDanh) private ghiDanhRepo: Repository<GhiDanh>,
+    @InjectRepository(PhongThiHocSinh)
+    private phongThiHocSinhRepo: Repository<PhongThiHocSinh>,
     @InjectRepository(CauHoiBaiThi)
     private cauHoiBaiThiRepo: Repository<CauHoiBaiThi>,
     private dataSource: DataSource,
   ) {}
 
-  // HS vào phòng (theo mã phòng) -> kiểm tra ghi danh -> bốc ngẫu nhiên 1 đề ->
+  // HS vào phòng (theo mã phòng) -> kiểm tra phân công -> bốc ngẫu nhiên 1 đề ->
   // tạo BAI_LAM + bộ CAU_HOI_BAI_LAM (theo cheDoCauHoi)
   async joinRoom(dto: JoinRoomDto, maNguoiDung: number) {
     const phong = await this.phongThiRepo.findOne({
@@ -57,13 +58,13 @@ export class ExamSessionsService {
     if (!phong || !phong.laHoatDong)
       throw new NotFoundException('Phòng thi không tồn tại');
 
-    // Quyền vào phòng dựa trên ghi danh: HS phải được ghi danh môn-học-kỳ của phòng.
-    const daGhiDanh = await this.ghiDanhRepo.findOne({
-      where: { maMonHocHocKy: phong.maMonHocHocKy, maHocSinh: maNguoiDung },
+    // Quyền vào phòng dựa trên phân công: HS phải được Admin gán vào phòng này.
+    const daPhanCong = await this.phongThiHocSinhRepo.findOne({
+      where: { maPhongThi: phong.maPhongThi, maHocSinh: maNguoiDung },
     });
-    if (!daGhiDanh)
+    if (!daPhanCong)
       throw new ForbiddenException(
-        'Bạn chưa được ghi danh vào môn học của phòng thi này',
+        'Bạn không được phân công vào phòng thi này',
       );
 
     // Cho vào phòng theo thời gian (mở->đóng), đồng thời tôn trọng thao tác thủ công:
@@ -82,25 +83,13 @@ export class ExamSessionsService {
     });
     if (baiLamCu) return this.resumeHoacChan(baiLamCu, maNguoiDung);
 
-    // Kiểm tra giới hạn số người tham gia
-    if (phong.soNguoiThamGia) {
-      const soThanhVien = await this.thanhVienRepo.countBy({
-        maPhongThi: phong.maPhongThi,
-      });
-      if (soThanhVien >= phong.soNguoiThamGia)
-        throw new BadRequestException(
-          'Phòng thi đã đủ số lượng người tham gia',
-        );
-    }
-
     // Bốc ngẫu nhiên 1 đề trong danh sách đề của phòng.
     const dsDe = await this.phongThiBaiThiRepo.find({
       where: { maPhongThi: phong.maPhongThi },
     });
     if (dsDe.length === 0)
       throw new BadRequestException('Phòng thi chưa có đề thi');
-    const maBaiThiChon =
-      dsDe[Math.floor(Math.random() * dsDe.length)].maBaiThi;
+    const maBaiThiChon = dsDe[Math.floor(Math.random() * dsDe.length)].maBaiThi;
 
     // Lấy ngân hàng câu hỏi của đề đã bốc
     const dsCauHoi = await this.cauHoiBaiThiRepo.find({

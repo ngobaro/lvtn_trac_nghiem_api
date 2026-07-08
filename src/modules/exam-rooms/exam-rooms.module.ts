@@ -4,6 +4,7 @@ import { ExamRoomsController } from './exam-rooms.controller';
 import { ExamRoomsService } from './exam-rooms.service';
 import { PhongThi } from './entities/phong-thi.entity';
 import { PhongThiBaiThi } from './entities/phong-thi-bai-thi.entity';
+import { PhongThiHocSinh } from './entities/phong-thi-hoc-sinh.entity';
 import { ThanhVienPhong } from './entities/thanh-vien-phong.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
@@ -16,6 +17,7 @@ import { ExamSessionsModule } from '../exam-sessions/exam-sessions.module';
     TypeOrmModule.forFeature([
       PhongThi,
       PhongThiBaiThi,
+      PhongThiHocSinh,
       ThanhVienPhong,
       BaiThi,
       CauHoiBaiThi,

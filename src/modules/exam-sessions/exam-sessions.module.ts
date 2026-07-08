@@ -9,8 +9,8 @@ import { CauHoiBaiLam } from './entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from './entities/nguoi-dung-tra-loi.entity';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { PhongThiBaiThi } from '../exam-rooms/entities/phong-thi-bai-thi.entity';
+import { PhongThiHocSinh } from '../exam-rooms/entities/phong-thi-hoc-sinh.entity';
 import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
-import { GhiDanh } from '../enrollments/entities/ghi-danh.entity';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
 import { CauHoi } from '../questions/entities/cau-hoi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
@@ -25,8 +25,8 @@ import { KetQua } from '../results/entities/ket-qua.entity';
       NguoiDungTraLoi,
       PhongThi,
       PhongThiBaiThi,
+      PhongThiHocSinh,
       ThanhVienPhong,
-      GhiDanh,
       CauHoiBaiThi,
       CauHoi,
       LuaChon,
