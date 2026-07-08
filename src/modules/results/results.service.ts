@@ -11,6 +11,7 @@ import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
+import { PhongThiHocSinh } from '../exam-rooms/entities/phong-thi-hoc-sinh.entity';
 import { MonHoc } from '../subjects/entities/mon-hoc.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { HocKy } from '../semesters/entities/hoc-ky.entity';
@@ -314,6 +315,75 @@ export class ResultsService {
       };
     });
 
+    return { items, total, page, limit };
+  }
+
+  // Bảng điểm 1 phòng: liệt kê TẤT CẢ học sinh được gán vào phòng
+  // (PHONG_THI_HOC_SINH), trái-nối với KET_QUA để lấy điểm. Em nào chưa thi
+  // (chưa có kết quả) vẫn hiện với daThi=false, các trường điểm null.
+  async getRoomScores(
+    maPhongThi: number,
+    user: CurrentUserPayload,
+    query: { page?: number; limit?: number } = {},
+  ) {
+    const { page = 1, limit = 10 } = query;
+
+    const phong = await this.dataSource
+      .getRepository(PhongThi)
+      .findOne({ where: { maPhongThi } });
+    if (!phong) throw new NotFoundException('Không tìm thấy phòng thi');
+
+    // Phạm vi GV: chỉ xem phòng thuộc môn-học-kỳ mình được phân dạy.
+    if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN) {
+      const offerings = await this.layOfferingsGvDay(user.maNguoiDung);
+      if (!offerings.includes(phong.maMonHocHocKy))
+        throw new ForbiddenException('Bạn không có quyền xem phòng thi này');
+    }
+
+    const dsGan = await this.dataSource.getRepository(PhongThiHocSinh).find({
+      where: { maPhongThi },
+      relations: { hocSinh: true },
+    });
+
+    const ketQuas = await this.ketQuaRepo
+      .createQueryBuilder('kq')
+      .innerJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
+      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
+      .where('bl.maPhongThi = :maPhongThi', { maPhongThi })
+      .select([
+        'kq.maKetQua AS maKetQua',
+        'kq.maNguoiDung AS maNguoiDung',
+        'kq.diemSo AS diemSo',
+        'kq.soCauDung AS soCauDung',
+        'kq.tongSoCau AS tongSoCau',
+        'bt.tieuDe AS tieuDe',
+        'bl.thoiGianKetThuc AS thoiGianNop',
+      ])
+      .getRawMany();
+    const mapKq = new Map(ketQuas.map((k) => [Number(k.maNguoiDung), k]));
+
+    const tatCa = dsGan
+      .map((g) => {
+        const kq = mapKq.get(g.maHocSinh);
+        return {
+          maNguoiDung: g.maHocSinh,
+          tenNguoiDung: g.hocSinh?.tenNguoiDung ?? null,
+          email: g.hocSinh?.email ?? null,
+          daThi: !!kq,
+          maKetQua: kq ? Number(kq.maKetQua) : null,
+          tieuDe: kq ? kq.tieuDe : null,
+          diemSo: kq ? Number(kq.diemSo) : null,
+          soCauDung: kq ? Number(kq.soCauDung) : null,
+          tongSoCau: kq ? Number(kq.tongSoCau) : null,
+          thoiGianNop: kq ? kq.thoiGianNop : null,
+        };
+      })
+      .sort((a, b) =>
+        (a.tenNguoiDung ?? '').localeCompare(b.tenNguoiDung ?? ''),
+      );
+
+    const total = tatCa.length;
+    const items = tatCa.slice((page - 1) * limit, (page - 1) * limit + limit);
     return { items, total, page, limit };
   }
 
