@@ -13,6 +13,7 @@ import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
 import { MonHoc } from '../subjects/entities/mon-hoc.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
+import { HocKy } from '../semesters/entities/hoc-ky.entity';
 import { PhanCongGiangDay } from '../teaching-assignments/entities/phan-cong-giang-day.entity';
 import { QueryMyResultDto } from './dto/query-my-result.dto';
 import { QueryResultRoomDto } from './dto/query-result-room.dto';
@@ -263,10 +264,15 @@ export class ResultsService {
     const total = await baseQb.clone().getCount();
 
     const qb = baseQb
+      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = mhhk.maMonHoc')
+      .leftJoin(HocKy, 'hk', 'hk.maHocKy = mhhk.maHocKy')
       .leftJoin(BaiLam, 'bl', 'bl.maPhongThi = pt.maPhongThi')
       .leftJoin(KetQua, 'kq', 'kq.maBaiLam = bl.maBaiLam')
       .select('pt.maPhongThi', 'maPhongThi')
       .addSelect('pt.tenPhongThi', 'tenPhongThi')
+      .addSelect('mh.tenMonHoc', 'tenMonHoc')
+      .addSelect('hk.tenHocKy', 'tenHocKy')
+      .addSelect('hk.namHoc', 'namHoc')
       .addSelect('COUNT(DISTINCT kq.maKetQua)', 'soLuotNop')
       .addSelect('AVG(kq.diemSo)', 'diemTrungBinh')
       .addSelect('MAX(kq.diemSo)', 'diemCaoNhat')
@@ -282,6 +288,9 @@ export class ResultsService {
       )
       .groupBy('pt.maPhongThi')
       .addGroupBy('pt.tenPhongThi')
+      .addGroupBy('mh.tenMonHoc')
+      .addGroupBy('hk.tenHocKy')
+      .addGroupBy('hk.namHoc')
       .orderBy('pt.maPhongThi', 'DESC')
       .offset((page - 1) * limit)
       .limit(limit);
@@ -292,6 +301,9 @@ export class ResultsService {
       return {
         maPhongThi: Number(r.maPhongThi),
         tenPhongThi: r.tenPhongThi,
+        tenMonHoc: r.tenMonHoc,
+        tenHocKy: r.tenHocKy,
+        namHoc: r.namHoc,
         soLuotNop,
         tongThanhVien: Number(r.tongThanhVien) || 0,
         diemTrungBinh: soLuotNop
