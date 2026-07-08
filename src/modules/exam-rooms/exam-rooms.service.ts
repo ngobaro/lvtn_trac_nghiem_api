@@ -188,6 +188,7 @@ export class ExamRoomsService {
 
     await this.kiemTraMonHocHocKy(dto.maMonHocHocKy);
     await this.kiemTraDsBaiThi(dto.maBaiThis, dto.maMonHocHocKy);
+    await this.kiemTraThoiLuong(dto.thoiGianLamBai, dto.maBaiThis);
 
     // Thi đồng loạt: giờ đóng phòng = giờ mở + thời lượng làm bài (cấp phòng).
     const dongLuc = new Date(moLuc.getTime() + dto.thoiGianLamBai * 60000);
@@ -240,6 +241,9 @@ export class ExamRoomsService {
 
     if (dto.maBaiThis)
       await this.kiemTraDsBaiThi(dto.maBaiThis, phong.maMonHocHocKy);
+
+    const dsBaiThi = dto.maBaiThis ?? phong.phongThiBaiThis.map((x) => x.maBaiThi);
+    await this.kiemTraThoiLuong(thoiGianLamBai, dsBaiThi);
 
     return this.dataSource.transaction(async (em) => {
       await em.update(PhongThi, id, {
@@ -331,6 +335,21 @@ export class ExamRoomsService {
     if (hopLe !== ids.length)
       throw new BadRequestException(
         'Một số đề thi không tồn tại, chưa công khai hoặc không thuộc môn học của học kỳ này',
+      );
+  }
+
+  // Thời lượng phòng phải đủ cho đề dài nhất (HS bốc đề nào cũng phải kịp làm).
+  private async kiemTraThoiLuong(thoiGianLamBai: number, maBaiThis: number[]) {
+    if (!maBaiThis.length) return;
+    const kq = await this.baiThiRepo
+      .createQueryBuilder('bt')
+      .select('MAX(bt.thoiGianLamBai)', 'max')
+      .where('bt.maBaiThi IN (:...ids)', { ids: maBaiThis })
+      .getRawOne<{ max: number }>();
+    const maxDe = Number(kq?.max ?? 0);
+    if (thoiGianLamBai < maxDe)
+      throw new BadRequestException(
+        `Thời lượng phòng (${thoiGianLamBai} phút) không được nhỏ hơn thời lượng đề dài nhất trong phòng (${maxDe} phút)`,
       );
   }
 }
