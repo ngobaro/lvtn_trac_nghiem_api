@@ -11,6 +11,7 @@ import { QueryResultDto } from './dto/query-result.dto';
 import { QueryResultStatsDto } from './dto/query-result-stats.dto';
 import { QueryResultRoomDto } from './dto/query-result-room.dto';
 import { QueryMyResultDto } from './dto/query-my-result.dto';
+import { PaginationDto } from '../../common/dto/pagination.dto';
 
 @Controller('results')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -52,6 +53,17 @@ export class ResultsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.resultsService.getRoomStats(query, user);
+  }
+
+  @Get('rooms/:maPhongThi/scores')
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
+  @ResponseMessage('Lấy bảng điểm phòng thành công')
+  getRoomScores(
+    @Param('maPhongThi') maPhongThi: number,
+    @Query() query: PaginationDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.resultsService.getRoomScores(+maPhongThi, user, query);
   }
 
   @Get()

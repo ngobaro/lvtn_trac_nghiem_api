@@ -19,6 +19,7 @@ import { UpdateExamRoomDto } from './dto/update-exam-room.dto';
 import { QueryExamRoomDto } from './dto/query-exam-room.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
+import { TrangThaiThanhVien } from '../../common/enums/trang-thai-thanh-vien.enum';
 import { ExamSessionsService } from '../exam-sessions/exam-sessions.service';
 
 // Các bước chuyển trạng thái phòng thi hợp lệ
@@ -332,12 +333,37 @@ export class ExamRoomsService {
     return daLuu;
   }
 
+  // Thành viên phòng = TẤT CẢ học sinh được gán vào phòng (PHONG_THI_HOC_SINH),
+  // trái-nối với THANH_VIEN_PHONG để suy ra trạng thái tham gia. Em nào chưa có
+  // bản ghi tham gia (chưa vào thi) -> VANG_MAT (không lưu DB), để Admin
+  // biết ai vắng mặt.
   async getMembers(id: number) {
     await this.findOne(id);
-    return this.thanhVienRepo.find({
+
+    const dsGan = await this.phongThiHocSinhRepo.find({
       where: { maPhongThi: id },
-      relations: { nguoiDung: true },
+      relations: { hocSinh: true },
     });
+    const dsThanhVien = await this.thanhVienRepo.find({
+      where: { maPhongThi: id },
+    });
+    const mapTV = new Map(dsThanhVien.map((tv) => [tv.maNguoiDung, tv]));
+
+    return dsGan
+      .map((g) => {
+        const tv = mapTV.get(g.maHocSinh);
+        return {
+          maHocSinh: g.maHocSinh,
+          maThanhVien: tv?.maThanhVien ?? null,
+          nguoiDung: g.hocSinh,
+          trangThai: tv ? tv.trangThai : TrangThaiThanhVien.VANG_MAT,
+        };
+      })
+      .sort((a, b) =>
+        (a.nguoiDung?.tenNguoiDung ?? '').localeCompare(
+          b.nguoiDung?.tenNguoiDung ?? '',
+        ),
+      );
   }
 
   private async kiemTraMonHocHocKy(maMonHocHocKy: number) {
