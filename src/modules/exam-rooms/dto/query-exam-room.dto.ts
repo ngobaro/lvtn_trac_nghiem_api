@@ -1,11 +1,5 @@
-import {
-  IsBoolean,
-  IsEnum,
-  IsInt,
-  IsOptional,
-  IsString,
-} from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { IsEnum, IsInt, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 import { PaginationDto } from '../../../common/dto/pagination.dto';
 import { TrangThaiPhongThi } from '../../../common/enums/trang-thai-phong-thi.enum';
 
@@ -25,11 +19,4 @@ export class QueryExamRoomDto extends PaginationDto {
   @IsOptional()
   @IsEnum(TrangThaiPhongThi)
   trangThai?: TrangThaiPhongThi;
-
-  // Lọc theo trạng thái xóa mềm. Vắng = chỉ phòng đang hoạt động (mặc định);
-  // false = phòng đã xóa mềm (phục vụ trang thùng rác của Admin).
-  @IsOptional()
-  @Transform(({ value }) => value === 'true' || value === true)
-  @IsBoolean()
-  laHoatDong?: boolean;
 }
