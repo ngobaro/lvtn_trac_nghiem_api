@@ -4,15 +4,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { GhiDanh } from './entities/ghi-danh.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { HocKy } from '../semesters/entities/hoc-ky.entity';
-import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
-import { VaiTro } from '../../common/enums/vai-tro.enum';
-import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
-import { BulkEnrollmentDto } from './dto/bulk-enrollment.dto';
+import { PhongThiHocSinh } from '../exam-rooms/entities/phong-thi-hoc-sinh.entity';
 import { QueryEnrollmentDto } from './dto/query-enrollment.dto';
 
 @Injectable()
@@ -22,12 +19,14 @@ export class EnrollmentsService {
     private readonly ghiDanhRepo: Repository<GhiDanh>,
     @InjectRepository(MonHocHocKy)
     private readonly mhhkRepo: Repository<MonHocHocKy>,
-    @InjectRepository(NguoiDung)
-    private readonly nguoiDungRepo: Repository<NguoiDung>,
     @InjectRepository(BaiLam)
     private readonly baiLamRepo: Repository<BaiLam>,
+    @InjectRepository(PhongThiHocSinh)
+    private readonly phongThiHocSinhRepo: Repository<PhongThiHocSinh>,
   ) {}
 
+  // Admin: liệt kê học sinh đã đăng ký theo môn-học-kỳ (dùng cho picker gán phòng
+  // và hiển thị ở màn Chi tiết học kỳ). Không còn thao tác ghi danh của Admin.
   async findAll(query: QueryEnrollmentDto) {
     const qb = this.ghiDanhRepo
       .createQueryBuilder('gd')
@@ -44,58 +43,58 @@ export class EnrollmentsService {
     return qb.orderBy('gd.maGhiDanh', 'DESC').getMany();
   }
 
-  async create(dto: CreateEnrollmentDto) {
-    await this.kiemTraMonHocHocKy(dto.maMonHocHocKy);
-    await this.kiemTraHocSinh(dto.maHocSinh);
+  // Học sinh: danh sách môn-học-kỳ đăng ký được (đang hoạt động, học kỳ chưa
+  // kết thúc) kèm cờ `daDangKy` cho biết HS đã đăng ký môn đó hay chưa.
+  async layMonKhaDung(maHocSinh: number) {
+    const offerings = await this.mhhkRepo
+      .createQueryBuilder('mhhk')
+      .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
+      .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
+      .where('mhhk.laHoatDong = :hd', { hd: true })
+      .orderBy('mhhk.maMonHocHocKy', 'DESC')
+      .getMany();
+
+    const conMo = offerings.filter((o) => o.hocKy && !this.daKetThuc(o.hocKy));
+
+    const daDangKys = await this.ghiDanhRepo.find({ where: { maHocSinh } });
+    const daCo = new Set(daDangKys.map((g) => g.maMonHocHocKy));
+
+    return conMo.map((o) => ({ ...o, daDangKy: daCo.has(o.maMonHocHocKy) }));
+  }
+
+  // Học sinh tự đăng ký 1 môn-học-kỳ.
+  async dangKy(maHocSinh: number, maMonHocHocKy: number) {
+    const mhhk = await this.kiemTraMonHocHocKy(maMonHocHocKy);
+    if (!mhhk.laHoatDong)
+      throw new BadRequestException('Môn học này chưa mở đăng ký');
 
     const daCo = await this.ghiDanhRepo.findOne({
-      where: { maMonHocHocKy: dto.maMonHocHocKy, maHocSinh: dto.maHocSinh },
+      where: { maMonHocHocKy, maHocSinh },
     });
-    if (daCo)
-      throw new BadRequestException('Học sinh đã được ghi danh môn học này');
+    if (daCo) throw new BadRequestException('Bạn đã đăng ký môn học này');
 
-    const gd = this.ghiDanhRepo.create(dto);
+    const gd = this.ghiDanhRepo.create({ maMonHocHocKy, maHocSinh });
     return this.ghiDanhRepo.save(gd);
   }
 
-  // Ghi danh hàng loạt: bỏ qua các học sinh đã ghi danh trước đó.
-  async createBulk(dto: BulkEnrollmentDto) {
-    await this.kiemTraMonHocHocKy(dto.maMonHocHocKy);
-
-    const hocSinhs = await this.nguoiDungRepo.find({
-      where: { maNguoiDung: In(dto.maHocSinhs), vaiTro: VaiTro.HOC_SINH },
+  // Học sinh tự hủy đăng ký. Chặn nếu học kỳ đã kết thúc, đã có bài làm, hoặc
+  // đã được Admin gán vào phòng thi của môn-học-kỳ này.
+  async huyDangKy(maHocSinh: number, maMonHocHocKy: number) {
+    const gd = await this.ghiDanhRepo.findOne({
+      where: { maMonHocHocKy, maHocSinh },
     });
-    const idHopLe = new Set(hocSinhs.map((h) => h.maNguoiDung));
+    if (!gd) throw new NotFoundException('Bạn chưa đăng ký môn học này');
 
-    const daGhiDanh = await this.ghiDanhRepo.find({
-      where: { maMonHocHocKy: dto.maMonHocHocKy },
-    });
-    const daCo = new Set(daGhiDanh.map((g) => g.maHocSinh));
+    await this.kiemTraHocKyConMo(maMonHocHocKy, 'hủy đăng ký');
+    await this.kiemTraGhiDanhCoLichSu(maMonHocHocKy, maHocSinh);
+    await this.kiemTraDaGanPhong(maMonHocHocKy, maHocSinh);
 
-    const canThem = dto.maHocSinhs
-      .filter((id) => idHopLe.has(id) && !daCo.has(id))
-      .map((maHocSinh) =>
-        this.ghiDanhRepo.create({
-          maMonHocHocKy: dto.maMonHocHocKy,
-          maHocSinh,
-        }),
-      );
-
-    if (canThem.length) await this.ghiDanhRepo.save(canThem);
-    return { soLuongGhiDanh: canThem.length };
-  }
-
-  async remove(id: number) {
-    const gd = await this.ghiDanhRepo.findOne({ where: { maGhiDanh: id } });
-    if (!gd) throw new NotFoundException('Ghi danh không tồn tại');
-    await this.kiemTraHocKyConMo(gd.maMonHocHocKy, 'hủy ghi danh học sinh');
-    await this.kiemTraGhiDanhCoLichSu(gd.maMonHocHocKy, gd.maHocSinh);
     await this.ghiDanhRepo.remove(gd);
     return null;
   }
 
-  // Guard hybrid: chặn hủy ghi danh nếu học sinh đã có bài làm trong phòng thi
-  // thuộc môn-học-kỳ đó (bài làm là dữ liệu lịch sử — không được phá âm thầm).
+  // Guard: chặn hủy đăng ký nếu học sinh đã có bài làm trong phòng thi thuộc
+  // môn-học-kỳ đó (bài làm là dữ liệu lịch sử — không được phá âm thầm).
   private async kiemTraGhiDanhCoLichSu(
     maMonHocHocKy: number,
     maHocSinh: number,
@@ -108,11 +107,27 @@ export class EnrollmentsService {
       .getCount();
     if (soBaiLam > 0)
       throw new BadRequestException(
-        'Không thể hủy ghi danh: học sinh đã có bài làm trong môn học của học kỳ này',
+        'Không thể hủy đăng ký: bạn đã có bài làm trong môn học của học kỳ này',
       );
   }
 
-  // Học kỳ đã kết thúc thì khóa mọi thay đổi ghi danh.
+  // Guard: chặn hủy đăng ký nếu HS đã được gán vào phòng thi (còn hoạt động)
+  // của môn-học-kỳ này — Admin đã xếp phòng thì không được rút môn âm thầm.
+  private async kiemTraDaGanPhong(maMonHocHocKy: number, maHocSinh: number) {
+    const soGan = await this.phongThiHocSinhRepo
+      .createQueryBuilder('pths')
+      .innerJoin('pths.phongThi', 'pt')
+      .where('pths.maHocSinh = :hs', { hs: maHocSinh })
+      .andWhere('pt.maMonHocHocKy = :mhhk', { mhhk: maMonHocHocKy })
+      .andWhere('pt.laHoatDong = :hd', { hd: true })
+      .getCount();
+    if (soGan > 0)
+      throw new BadRequestException(
+        'Không thể hủy đăng ký: bạn đã được xếp vào phòng thi của môn học này',
+      );
+  }
+
+  // Học kỳ đã kết thúc thì khóa mọi thay đổi đăng ký.
   private daKetThuc(hocKy: HocKy): boolean {
     const raw = hocKy.ngayKetThuc as unknown as string | Date;
     const kt =
@@ -131,8 +146,9 @@ export class EnrollmentsService {
       throw new BadRequestException('Môn học của học kỳ không tồn tại');
     if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
       throw new BadRequestException(
-        'Học kỳ đã kết thúc, không thể ghi danh học sinh',
+        'Học kỳ đã kết thúc, không thể đăng ký môn học',
       );
+    return mhhk;
   }
 
   private async kiemTraHocKyConMo(maMonHocHocKy: number, hanhDong: string) {
@@ -144,13 +160,5 @@ export class EnrollmentsService {
       throw new BadRequestException(
         `Học kỳ đã kết thúc, không thể ${hanhDong}`,
       );
-  }
-
-  private async kiemTraHocSinh(maHocSinh: number) {
-    const hs = await this.nguoiDungRepo.findOne({
-      where: { maNguoiDung: maHocSinh },
-    });
-    if (!hs || hs.vaiTro !== VaiTro.HOC_SINH)
-      throw new BadRequestException('Người dùng không phải là học sinh');
   }
 }
