@@ -7,7 +7,6 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../../common/interfaces/current-user.interface';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
-import { QueryResultDto } from './dto/query-result.dto';
 import { QueryResultStatsDto } from './dto/query-result-stats.dto';
 import { QueryResultRoomDto } from './dto/query-result-room.dto';
 import { QueryMyResultDto } from './dto/query-my-result.dto';
@@ -64,16 +63,6 @@ export class ResultsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     return this.resultsService.getRoomScores(+maPhongThi, user, query);
-  }
-
-  @Get()
-  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
-  @ResponseMessage('Lấy danh sách kết quả thành công')
-  getResults(
-    @Query() query: QueryResultDto,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    return this.resultsService.getResults(query, user);
   }
 
   @Get('students/:maHocSinh')

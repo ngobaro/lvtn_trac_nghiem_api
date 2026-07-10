@@ -9,8 +9,6 @@ import { KetQua } from './entities/ket-qua.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
 import { PhongThi } from '../exam-rooms/entities/phong-thi.entity';
-import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
-import { ThanhVienPhong } from '../exam-rooms/entities/thanh-vien-phong.entity';
 import { PhongThiHocSinh } from '../exam-rooms/entities/phong-thi-hoc-sinh.entity';
 import { MonHoc } from '../subjects/entities/mon-hoc.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
@@ -22,7 +20,6 @@ import { CauHoiBaiLam } from '../exam-sessions/entities/cau-hoi-bai-lam.entity';
 import { NguoiDungTraLoi } from '../exam-sessions/entities/nguoi-dung-tra-loi.entity';
 import { LuaChon } from '../questions/entities/lua-chon.entity';
 import { DapAn } from '../questions/entities/dap-an.entity';
-import { QueryResultDto } from './dto/query-result.dto';
 import { QueryResultStatsDto } from './dto/query-result-stats.dto';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
@@ -161,48 +158,6 @@ export class ResultsService {
       .getRawMany();
   }
 
-  // Danh sách kết quả (GV chỉ xem đề của môn-kỳ mình dạy, Admin xem tất cả)
-  async getResults(query: QueryResultDto, user: CurrentUserPayload) {
-    const { page = 1, limit = 10, maBaiThi, maPhongThi, maNguoiDung } = query;
-
-    const qb = this.ketQuaRepo
-      .createQueryBuilder('kq')
-      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
-      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
-      .leftJoin(NguoiDung, 'nd', 'nd.maNguoiDung = kq.maNguoiDung');
-
-    if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN)
-      await this.gioiHanTheoGvDay(qb, user.maNguoiDung);
-    if (maBaiThi) qb.andWhere('kq.maBaiThi = :maBaiThi', { maBaiThi });
-    if (maPhongThi) qb.andWhere('bl.maPhongThi = :maPhongThi', { maPhongThi });
-    if (maNguoiDung)
-      qb.andWhere('kq.maNguoiDung = :maNguoiDung', { maNguoiDung });
-
-    const countQb = qb.clone();
-
-    qb.select([
-      'kq.maKetQua AS maKetQua',
-      'kq.maBaiLam AS maBaiLam',
-      'kq.maBaiThi AS maBaiThi',
-      'kq.maNguoiDung AS maNguoiDung',
-      'nd.tenNguoiDung AS tenNguoiDung',
-      'nd.email AS email',
-      'kq.diemSo AS diemSo',
-      'kq.tongSoCau AS tongSoCau',
-      'kq.soCauDung AS soCauDung',
-      'bt.tieuDe AS tieuDe',
-      'bl.maPhongThi AS maPhongThi',
-      'bl.thoiGianKetThuc AS thoiGianNop',
-    ])
-      .orderBy('kq.maKetQua', 'DESC')
-      .offset((page - 1) * limit)
-      .limit(limit);
-
-    const items = await qb.getRawMany();
-    const total = await countQb.getCount();
-    return { items, total, page, limit };
-  }
-
   // Thêm điều kiện giới hạn theo môn-học-kỳ mà GV được phân dạy (trên alias 'bt').
   private async gioiHanTheoGvDay(qb: any, maGiaoVien: number) {
     const offerings = await this.layOfferingsGvDay(maGiaoVien);
@@ -336,13 +291,14 @@ export class ResultsService {
       .addSelect('AVG(kq.diemSo)', 'diemTrungBinh')
       .addSelect('MAX(kq.diemSo)', 'diemCaoNhat')
       .addSelect('MIN(kq.diemSo)', 'diemThapNhat')
-      // Mẫu số: số học sinh đã vào phòng — subquery tương quan để không nhân dòng.
+      // Mẫu số: số học sinh được gán vào phòng (kể cả em vắng thi), khớp với
+      // bảng điểm phòng — subquery tương quan để không nhân dòng.
       .addSelect(
         (sub) =>
           sub
             .select('COUNT(*)')
-            .from(ThanhVienPhong, 'tv')
-            .where('tv.maPhongThi = pt.maPhongThi'),
+            .from(PhongThiHocSinh, 'pths')
+            .where('pths.maPhongThi = pt.maPhongThi'),
         'tongThanhVien',
       )
       .groupBy('pt.maPhongThi')
