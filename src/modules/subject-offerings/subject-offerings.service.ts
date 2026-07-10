@@ -11,7 +11,6 @@ import { GhiDanh } from '../enrollments/entities/ghi-danh.entity';
 import { MonHoc } from '../subjects/entities/mon-hoc.entity';
 import { HocKy } from '../semesters/entities/hoc-ky.entity';
 import { CreateSubjectOfferingDto } from './dto/create-subject-offering.dto';
-import { UpdateSubjectOfferingDto } from './dto/update-subject-offering.dto';
 import { QuerySubjectOfferingDto } from './dto/query-subject-offering.dto';
 
 @Injectable()
@@ -107,11 +106,6 @@ export class SubjectOfferingsService {
     return this.mhhkRepo.save(mhhk);
   }
 
-  async update(id: number, dto: UpdateSubjectOfferingDto) {
-    const mhhk = await this.findOne(id);
-    return this.mhhkRepo.save({ ...mhhk, ...dto });
-  }
-
   // Xóa mềm. Chặn nếu đã có học sinh đăng ký (HS tự đăng ký qua GHI_DANH).
   async remove(id: number) {
     const mhhk = await this.findOne(id);
@@ -127,12 +121,6 @@ export class SubjectOfferingsService {
     return null;
   }
 
-  async updateStatus(id: number, laHoatDong: boolean) {
-    const mhhk = await this.findOne(id);
-    mhhk.laHoatDong = laHoatDong;
-    return this.mhhkRepo.save(mhhk);
-  }
-
   // Danh sách môn-học-kỳ mà 1 giáo viên được phân dạy (kèm quan hệ hiển thị).
   async layDangDay(maGiaoVien: number) {
     return this.mhhkRepo
@@ -142,22 +130,6 @@ export class SubjectOfferingsService {
         'pc',
         'pc.maMonHocHocKy = mhhk.maMonHocHocKy AND pc.maGiaoVien = :maGiaoVien',
         { maGiaoVien },
-      )
-      .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
-      .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
-      .orderBy('mhhk.maMonHocHocKy', 'DESC')
-      .getMany();
-  }
-
-  // Danh sách môn-học-kỳ mà 1 học sinh đã được ghi danh.
-  async layDaGhiDanh(maHocSinh: number) {
-    return this.mhhkRepo
-      .createQueryBuilder('mhhk')
-      .innerJoin(
-        GhiDanh,
-        'gd',
-        'gd.maMonHocHocKy = mhhk.maMonHocHocKy AND gd.maHocSinh = :maHocSinh',
-        { maHocSinh },
       )
       .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
       .leftJoinAndSelect('mhhk.hocKy', 'hocKy')

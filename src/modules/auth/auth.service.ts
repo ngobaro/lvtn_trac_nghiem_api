@@ -182,7 +182,8 @@ export class AuthService {
         return { message: 'OTP đã được gửi đến email' };
     }
 
-    async verifyOtp(email: string, otp: string) {
+    // Không expose ra route riêng: resetPassword tự xác thực OTP trong cùng 1 lần gọi.
+    private async verifyOtp(email: string, otp: string) {
         const key = `otp:${email}`;
         const stored = await this.cacheManager.get(key);
 

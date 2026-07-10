@@ -203,28 +203,6 @@ export class ExamSessionsService {
     };
   }
 
-  // Lấy 1 câu hỏi theo thứ tự hiển thị
-  async getQuestion(
-    maBaiLam: number,
-    thuTuHienThi: number,
-    maNguoiDung: number,
-  ) {
-    const baiLam = await this.layBaiLamCuaToi(maBaiLam, maNguoiDung);
-
-    const cauHoi = await this.cauHoiBaiLamRepo.findOne({
-      where: { maBaiLam, thuTuHienThi },
-      relations: { cauHoi: { luaChons: true } },
-    });
-    if (!cauHoi) throw new NotFoundException('Không tìm thấy câu hỏi');
-
-    const daTraLoi = await this.mapDaTraLoi(maBaiLam);
-    return this.dinhDangCauHoi(
-      cauHoi,
-      daTraLoi,
-      this.nenXaoTronDapAn(baiLam.phongThi.cheDoCauHoi),
-    );
-  }
-
   // Lưu/đổi/bỏ câu trả lời cho 1 câu hỏi
   async saveAnswer(
     maBaiLam: number,
