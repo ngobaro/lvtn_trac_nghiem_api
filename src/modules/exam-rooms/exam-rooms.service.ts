@@ -295,14 +295,22 @@ export class ExamRoomsService {
       .then(() => this.findOne(id));
   }
 
-  // Xóa mềm.
+  // Xóa cứng — chỉ cho phòng CHƯA bắt đầu (DANG_CHO). Phòng đang diễn ra hoặc
+  // đã đóng thì chặn (giữ toàn vẹn bài làm/lịch sử). findOne đồng bộ trạng thái
+  // theo thời gian trước khi kiểm tra. Phòng DANG_CHO chưa mở nên chưa có bài
+  // làm/thành viên; xóa tường minh các bảng nối trong transaction (không dựa
+  // vào FK cascade vì TiDB có thể không thực thi).
   async remove(id: number) {
-    const phong = await this.phongThiRepo.findOne({
-      where: { maPhongThi: id },
+    const phong = await this.findOne(id);
+    if (phong.trangThai !== TrangThaiPhongThi.DANG_CHO)
+      throw new BadRequestException('Chỉ xóa được phòng chưa bắt đầu');
+
+    await this.dataSource.transaction(async (em) => {
+      await em.delete(ThanhVienPhong, { maPhongThi: id });
+      await em.delete(PhongThiBaiThi, { maPhongThi: id });
+      await em.delete(PhongThiHocSinh, { maPhongThi: id });
+      await em.delete(PhongThi, id);
     });
-    if (!phong) throw new NotFoundException('Phòng thi không tồn tại');
-    phong.laHoatDong = false;
-    await this.phongThiRepo.save(phong);
     return null;
   }
 

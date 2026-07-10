@@ -25,6 +25,7 @@ import { DapAn } from '../questions/entities/dap-an.entity';
 import { QueryResultDto } from './dto/query-result.dto';
 import { QueryResultStatsDto } from './dto/query-result-stats.dto';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
+import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
 import { CurrentUserPayload } from '../../common/interfaces/current-user.interface';
 
 @Injectable()
@@ -45,57 +46,114 @@ export class ResultsService {
     return ds.map((p) => p.maMonHocHocKy);
   }
 
-  // Lịch sử thi của học sinh hiện tại (tìm theo tên đề + lọc theo môn)
+  // Cột chung cho một dòng lịch sử thi (phòng được gán + kết quả nếu có).
+  private readonly COT_LICH_SU = [
+    'pt.maPhongThi AS maPhongThi',
+    'pt.tenPhongThi AS tenPhongThi',
+    'pt.dongLuc AS dongLuc',
+    'mhhk.maMonHoc AS maMonHoc',
+    'mh.tenMonHoc AS tenMonHoc',
+    'kq.maKetQua AS maKetQua',
+    'kq.maBaiLam AS maBaiLam',
+    'kq.maBaiThi AS maBaiThi',
+    'kq.diemSo AS diemSo',
+    'kq.tongSoCau AS tongSoCau',
+    'kq.soCauDung AS soCauDung',
+    'bt.tieuDe AS tieuDe',
+    'bl.thoiGianBatDau AS thoiGianBatDau',
+    'bl.thoiGianKetThuc AS thoiGianNop',
+    'bl.trangThai AS trangThaiBaiLam',
+    'CASE WHEN kq.maKetQua IS NULL THEN 0 ELSE 1 END AS daThi',
+  ];
+
+  // Dựng truy vấn lịch sử thi của 1 học sinh: liệt kê các phòng em được gán, chỉ
+  // giữ dòng khi em ĐÃ CÓ KẾT QUẢ (đã nộp — thấy ngay, kể cả phòng đang mở) HOẶC
+  // phòng ĐÃ ĐÓNG (khi đó phòng em không thi hiện "Không tham gia"). Trả về
+  // QueryBuilder CHƯA select để nơi gọi tự áp select/phân trang/sắp xếp.
+  private qbLichSuHocSinh(
+    maHocSinh: number,
+    loc: { search?: string; maMonHoc?: number } = {},
+  ) {
+    const qb = this.dataSource
+      .getRepository(PhongThiHocSinh)
+      .createQueryBuilder('pths')
+      .innerJoin(PhongThi, 'pt', 'pt.maPhongThi = pths.maPhongThi')
+      .innerJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = pt.maMonHocHocKy')
+      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = mhhk.maMonHoc')
+      .leftJoin(
+        BaiLam,
+        'bl',
+        'bl.maPhongThi = pt.maPhongThi AND bl.maNguoiDung = :maHocSinh',
+        { maHocSinh },
+      )
+      .leftJoin(KetQua, 'kq', 'kq.maBaiLam = bl.maBaiLam')
+      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
+      .where('pths.maHocSinh = :maHocSinh', { maHocSinh })
+      .andWhere(
+        '(kq.maKetQua IS NOT NULL OR pt.dongLuc < :now OR pt.trangThai = :daDong)',
+        { now: new Date(), daDong: TrangThaiPhongThi.DA_DONG },
+      );
+
+    if (loc.search)
+      qb.andWhere('(pt.tenPhongThi LIKE :s OR bt.tieuDe LIKE :s)', {
+        s: `%${loc.search}%`,
+      });
+    if (loc.maMonHoc)
+      qb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc: loc.maMonHoc });
+
+    return qb;
+  }
+
+  // Lịch sử thi của học sinh hiện tại (có phân trang + lọc tên đề/môn).
   async getMyResults(maNguoiDung: number, query: QueryMyResultDto = {}) {
     const { page = 1, limit = 10, search, maMonHoc } = query;
 
-    const qb = this.ketQuaRepo
-      .createQueryBuilder('kq')
-      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
-      .leftJoin(BaiLam, 'bl', 'bl.maBaiLam = kq.maBaiLam')
-      .leftJoin(PhongThi, 'pt', 'pt.maPhongThi = bl.maPhongThi')
-      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = bt.maMonHocHocKy')
-      .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = mhhk.maMonHoc')
-      .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung });
-
-    if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search}%` });
-    if (maMonHoc) qb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc });
-
+    const qb = this.qbLichSuHocSinh(maNguoiDung, { search, maMonHoc });
     const countQb = qb.clone();
 
-    qb.select([
-      'kq.maKetQua AS maKetQua',
-      'kq.maBaiLam AS maBaiLam',
-      'kq.maBaiThi AS maBaiThi',
-      'kq.diemSo AS diemSo',
-      'kq.tongSoCau AS tongSoCau',
-      'kq.soCauDung AS soCauDung',
-      'bt.tieuDe AS tieuDe',
-      'mhhk.maMonHoc AS maMonHoc',
-      'mh.tenMonHoc AS tenMonHoc',
-      'bl.maPhongThi AS maPhongThi',
-      'bl.thoiGianBatDau AS thoiGianBatDau',
-      'bl.thoiGianKetThuc AS thoiGianNop',
-      'bl.trangThai AS trangThaiBaiLam',
-      'pt.dongLuc AS dongLuc',
-    ])
-      .orderBy('kq.maKetQua', 'DESC')
+    qb.select(this.COT_LICH_SU)
+      .orderBy('pt.dongLuc', 'DESC')
       .offset((page - 1) * limit)
       .limit(limit);
 
-    const items = await qb.getRawMany();
+    const raw = await qb.getRawMany();
+    const items = raw.map((r) => ({ ...r, daThi: Number(r.daThi) === 1 }));
     const total = await countQb.getCount();
     return { items, total, page, limit };
   }
 
-  // Danh sách môn học mà học sinh đã có kết quả (cho bộ lọc lịch sử thi)
+  // Admin: bảng điểm tất cả môn của 1 học sinh — toàn bộ dòng (không phân trang),
+  // sắp theo môn rồi giờ đóng phòng. FE tự gom nhóm theo môn + tính điểm TB.
+  async getKetQuaTheoHocSinh(maHocSinh: number) {
+    const raw = await this.qbLichSuHocSinh(maHocSinh)
+      .select(this.COT_LICH_SU)
+      .orderBy('mh.tenMonHoc', 'ASC')
+      .addOrderBy('pt.dongLuc', 'DESC')
+      .getRawMany();
+    return raw.map((r) => ({ ...r, daThi: Number(r.daThi) === 1 }));
+  }
+
+  // Danh sách môn học của các phòng học sinh được gán mà dòng thực sự hiển thị
+  // (đã có kết quả HOẶC phòng đã đóng) — khớp bộ lọc với getMyResults.
   async getMySubjects(maNguoiDung: number) {
-    return this.ketQuaRepo
-      .createQueryBuilder('kq')
-      .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
-      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = bt.maMonHocHocKy')
+    return this.dataSource
+      .getRepository(PhongThiHocSinh)
+      .createQueryBuilder('pths')
+      .innerJoin(PhongThi, 'pt', 'pt.maPhongThi = pths.maPhongThi')
+      .innerJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = pt.maMonHocHocKy')
       .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = mhhk.maMonHoc')
-      .where('kq.maNguoiDung = :maNguoiDung', { maNguoiDung })
+      .leftJoin(
+        BaiLam,
+        'bl',
+        'bl.maPhongThi = pt.maPhongThi AND bl.maNguoiDung = :maNguoiDung',
+        { maNguoiDung },
+      )
+      .leftJoin(KetQua, 'kq', 'kq.maBaiLam = bl.maBaiLam')
+      .where('pths.maHocSinh = :maNguoiDung', { maNguoiDung })
+      .andWhere(
+        '(kq.maKetQua IS NOT NULL OR pt.dongLuc < :now OR pt.trangThai = :daDong)',
+        { now: new Date(), daDong: TrangThaiPhongThi.DA_DONG },
+      )
       .select('mhhk.maMonHoc', 'maMonHoc')
       .addSelect('mh.tenMonHoc', 'tenMonHoc')
       .distinct(true)

@@ -23,6 +23,8 @@ export class SubjectOfferingsService {
     private readonly monHocRepo: Repository<MonHoc>,
     @InjectRepository(HocKy)
     private readonly hocKyRepo: Repository<HocKy>,
+    @InjectRepository(GhiDanh)
+    private readonly ghiDanhRepo: Repository<GhiDanh>,
   ) {}
 
   async findAll(query: QuerySubjectOfferingDto) {
@@ -70,7 +72,9 @@ export class SubjectOfferingsService {
     // TypeORM trả cột `date` dưới dạng chuỗi 'YYYY-MM-DD' lúc chạy.
     const raw = hocKy.ngayKetThuc as unknown as string | Date;
     const kt =
-      typeof raw === 'string' ? raw.slice(0, 10) : raw.toISOString().slice(0, 10);
+      typeof raw === 'string'
+        ? raw.slice(0, 10)
+        : raw.toISOString().slice(0, 10);
     return new Date().toISOString().slice(0, 10) >= kt;
   }
 
@@ -108,12 +112,15 @@ export class SubjectOfferingsService {
     return this.mhhkRepo.save({ ...mhhk, ...dto });
   }
 
-  // Xóa mềm.
+  // Xóa mềm. Chặn nếu đã có học sinh đăng ký (HS tự đăng ký qua GHI_DANH).
   async remove(id: number) {
     const mhhk = await this.findOne(id);
     if (this.daKetThuc(mhhk.hocKy))
+      throw new BadRequestException('Học kỳ đã kết thúc, không thể gỡ môn học');
+    const soDangKy = await this.ghiDanhRepo.countBy({ maMonHocHocKy: id });
+    if (soDangKy > 0)
       throw new BadRequestException(
-        'Học kỳ đã kết thúc, không thể gỡ môn học',
+        'Môn học đã có học sinh đăng ký, không thể gỡ',
       );
     mhhk.laHoatDong = false;
     await this.mhhkRepo.save(mhhk);

@@ -76,6 +76,13 @@ export class ResultsController {
     return this.resultsService.getResults(query, user);
   }
 
+  @Get('students/:maHocSinh')
+  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @ResponseMessage('Lấy bảng điểm học sinh thành công')
+  getStudentResults(@Param('maHocSinh') maHocSinh: number) {
+    return this.resultsService.getKetQuaTheoHocSinh(+maHocSinh);
+  }
+
   @Get(':id')
   @Roles(VaiTro.HOC_SINH, VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy chi tiết kết quả thành công')
