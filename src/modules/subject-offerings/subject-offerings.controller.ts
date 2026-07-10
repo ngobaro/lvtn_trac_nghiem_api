@@ -4,7 +4,6 @@ import {
   Delete,
   Get,
   Param,
-  Patch,
   Post,
   Query,
   UseGuards,
@@ -18,7 +17,6 @@ import type { CurrentUserPayload } from '../../common/interfaces/current-user.in
 import { VaiTro } from '../../common/enums/vai-tro.enum';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
 import { CreateSubjectOfferingDto } from './dto/create-subject-offering.dto';
-import { UpdateSubjectOfferingDto } from './dto/update-subject-offering.dto';
 import { QuerySubjectOfferingDto } from './dto/query-subject-offering.dto';
 
 @Controller('subject-offerings')
@@ -48,23 +46,6 @@ export class SubjectOfferingsController {
   @ResponseMessage('Mở môn học cho học kỳ thành công')
   create(@Body() dto: CreateSubjectOfferingDto) {
     return this.subjectOfferingsService.create(dto);
-  }
-
-  @Patch(':id')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
-  @ResponseMessage('Cập nhật môn học của học kỳ thành công')
-  update(@Param('id') id: number, @Body() dto: UpdateSubjectOfferingDto) {
-    return this.subjectOfferingsService.update(+id, dto);
-  }
-
-  @Patch(':id/status')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
-  @ResponseMessage('Cập nhật trạng thái môn học của học kỳ thành công')
-  updateStatus(
-    @Param('id') id: number,
-    @Body('laHoatDong') laHoatDong: boolean,
-  ) {
-    return this.subjectOfferingsService.updateStatus(+id, laHoatDong);
   }
 
   @Delete(':id')
