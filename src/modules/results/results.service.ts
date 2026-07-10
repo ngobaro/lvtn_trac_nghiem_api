@@ -46,9 +46,10 @@ export class ResultsService {
     return ds.map((p) => p.maMonHocHocKy);
   }
 
-  // Lịch sử thi của học sinh hiện tại: liệt kê MỌI phòng em được gán mà phòng
-  // ĐÃ ĐÓNG (kể cả phòng em không tham gia), trái-nối KET_QUA để lấy điểm. Em
-  // nào chưa thi có daThi=false, các trường điểm/đề = null.
+  // Lịch sử thi của học sinh hiện tại: liệt kê các phòng em được gán, hiện dòng
+  // khi em ĐÃ CÓ KẾT QUẢ (đã nộp — luôn thấy ngay, kể cả phòng đang mở) HOẶC
+  // phòng ĐÃ ĐÓNG (khi đó phòng em không thi hiện "Không tham gia"). daThi=false
+  // + các trường điểm/đề = null cho dòng vắng.
   async getMyResults(maNguoiDung: number, query: QueryMyResultDto = {}) {
     const { page = 1, limit = 10, search, maMonHoc } = query;
 
@@ -67,11 +68,12 @@ export class ResultsService {
       .leftJoin(KetQua, 'kq', 'kq.maBaiLam = bl.maBaiLam')
       .leftJoin(BaiThi, 'bt', 'bt.maBaiThi = kq.maBaiThi')
       .where('pths.maHocSinh = :maNguoiDung', { maNguoiDung })
-      // Chỉ phòng đã đóng mới coi là "không tham gia".
-      .andWhere('(pt.dongLuc < :now OR pt.trangThai = :daDong)', {
-        now: new Date(),
-        daDong: TrangThaiPhongThi.DA_DONG,
-      });
+      // Hiện dòng khi ĐÃ có kết quả (nộp rồi thì thấy ngay) HOẶC phòng đã đóng
+      // (mới coi phòng chưa thi là "không tham gia").
+      .andWhere(
+        '(kq.maKetQua IS NOT NULL OR pt.dongLuc < :now OR pt.trangThai = :daDong)',
+        { now: new Date(), daDong: TrangThaiPhongThi.DA_DONG },
+      );
 
     if (search)
       qb.andWhere('(pt.tenPhongThi LIKE :s OR bt.tieuDe LIKE :s)', {
@@ -109,8 +111,8 @@ export class ResultsService {
     return { items, total, page, limit };
   }
 
-  // Danh sách môn học của các phòng đã đóng mà học sinh được gán (cho bộ lọc
-  // lịch sử) — bao gồm cả môn em chỉ vắng thi.
+  // Danh sách môn học của các phòng học sinh được gán mà dòng thực sự hiển thị
+  // (đã có kết quả HOẶC phòng đã đóng) — khớp bộ lọc với getMyResults.
   async getMySubjects(maNguoiDung: number) {
     return this.dataSource
       .getRepository(PhongThiHocSinh)
@@ -118,11 +120,18 @@ export class ResultsService {
       .innerJoin(PhongThi, 'pt', 'pt.maPhongThi = pths.maPhongThi')
       .innerJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = pt.maMonHocHocKy')
       .leftJoin(MonHoc, 'mh', 'mh.maMonHoc = mhhk.maMonHoc')
+      .leftJoin(
+        BaiLam,
+        'bl',
+        'bl.maPhongThi = pt.maPhongThi AND bl.maNguoiDung = :maNguoiDung',
+        { maNguoiDung },
+      )
+      .leftJoin(KetQua, 'kq', 'kq.maBaiLam = bl.maBaiLam')
       .where('pths.maHocSinh = :maNguoiDung', { maNguoiDung })
-      .andWhere('(pt.dongLuc < :now OR pt.trangThai = :daDong)', {
-        now: new Date(),
-        daDong: TrangThaiPhongThi.DA_DONG,
-      })
+      .andWhere(
+        '(kq.maKetQua IS NOT NULL OR pt.dongLuc < :now OR pt.trangThai = :daDong)',
+        { now: new Date(), daDong: TrangThaiPhongThi.DA_DONG },
+      )
       .select('mhhk.maMonHoc', 'maMonHoc')
       .addSelect('mh.tenMonHoc', 'tenMonHoc')
       .distinct(true)
