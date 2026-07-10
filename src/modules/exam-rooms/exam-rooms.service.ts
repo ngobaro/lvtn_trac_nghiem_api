@@ -58,9 +58,17 @@ export class ExamRoomsService {
     private examSessionsService: ExamSessionsService,
   ) {}
 
-  // Admin: danh sách tất cả phòng (đang hoạt động).
+  // Admin: danh sách phòng. Mặc định chỉ phòng đang hoạt động; truyền
+  // laHoatDong=false để xem phòng đã xóa mềm (trang thùng rác).
   async findAll(query: QueryExamRoomDto) {
-    const { page = 1, limit = 10, search, maMonHocHocKy, trangThai } = query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      maMonHocHocKy,
+      trangThai,
+      laHoatDong = true,
+    } = query;
 
     await this.dongBoNhieuPhong();
 
@@ -69,7 +77,7 @@ export class ExamRoomsService {
       .leftJoinAndSelect('pt.monHocHocKy', 'mhhk')
       .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
       .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
-      .where('pt.laHoatDong = :hd', { hd: true });
+      .where('pt.laHoatDong = :hd', { hd: laHoatDong });
 
     if (search) qb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search}%` });
     if (maMonHocHocKy !== undefined)
