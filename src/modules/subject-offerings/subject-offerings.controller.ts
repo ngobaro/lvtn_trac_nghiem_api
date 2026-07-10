@@ -43,21 +43,6 @@ export class SubjectOfferingsController {
     return this.subjectOfferingsService.layDangDay(user.maNguoiDung);
   }
 
-  // Học sinh: các môn-học-kỳ mình đã được ghi danh.
-  @Get('me/enrolled')
-  @Roles(VaiTro.HOC_SINH)
-  @ResponseMessage('Lấy danh sách môn học đã ghi danh thành công')
-  layDaGhiDanh(@CurrentUser() user: CurrentUserPayload) {
-    return this.subjectOfferingsService.layDaGhiDanh(user.maNguoiDung);
-  }
-
-  @Get(':id')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
-  @ResponseMessage('Lấy thông tin môn học của học kỳ thành công')
-  findOne(@Param('id') id: number) {
-    return this.subjectOfferingsService.findOne(+id);
-  }
-
   @Post()
   @Roles(VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Mở môn học cho học kỳ thành công')

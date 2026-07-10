@@ -148,20 +148,4 @@ export class SubjectOfferingsService {
       .orderBy('mhhk.maMonHocHocKy', 'DESC')
       .getMany();
   }
-
-  // Danh sách môn-học-kỳ mà 1 học sinh đã được ghi danh.
-  async layDaGhiDanh(maHocSinh: number) {
-    return this.mhhkRepo
-      .createQueryBuilder('mhhk')
-      .innerJoin(
-        GhiDanh,
-        'gd',
-        'gd.maMonHocHocKy = mhhk.maMonHocHocKy AND gd.maHocSinh = :maHocSinh',
-        { maHocSinh },
-      )
-      .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
-      .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
-      .orderBy('mhhk.maMonHocHocKy', 'DESC')
-      .getMany();
-  }
 }

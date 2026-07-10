@@ -5,7 +5,6 @@ import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -82,12 +81,6 @@ export class AuthController {
   @ResponseMessage('Gửi OTP thành công')
   forgotPassword(@Body() dto: ForgotPasswordDto) { 
     return this.authService.forgotPassword(dto.email); 
-  }
-
-  @Post('verify-otp')
-  @ResponseMessage('Xác nhận OTP thành công')
-  verifyOtp(@Body() dto: VerifyOtpDto) { 
-    return this.authService.verifyOtp(dto.email, dto.otp); 
   }
 
   @Post('reset-password')

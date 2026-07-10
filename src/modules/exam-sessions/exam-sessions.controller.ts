@@ -28,16 +28,6 @@ export class ExamSessionsController {
     return this.examSessionsService.getSession(+id, user.maNguoiDung);
   }
 
-  @Get(':id/questions/:order')
-  @ResponseMessage('Lấy câu hỏi thành công')
-  getQuestion(
-    @Param('id') id: number,
-    @Param('order') order: number,
-    @CurrentUser() user: CurrentUserPayload,
-  ) {
-    return this.examSessionsService.getQuestion(+id, +order, user.maNguoiDung);
-  }
-
   @Post(':id/answers')
   @ResponseMessage('Lưu câu trả lời thành công')
   saveAnswer(
