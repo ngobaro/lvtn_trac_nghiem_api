@@ -31,7 +31,7 @@ export class SubjectsService {
     if (laHoatDong !== undefined)
       qb.andWhere('m.laHoatDong = :laHoatDong', { laHoatDong });
     if (search)
-      qb.andWhere('(m.tenMonHoc LIKE :s OR m.maMon LIKE :s)', {
+      qb.andWhere('m.tenMonHoc LIKE :s', {
         s: `%${search}%`,
       });
 
