@@ -6,10 +6,6 @@ export class MonHoc {
   @PrimaryGeneratedColumn()
   maMonHoc: number;
 
-  // Mã môn (tùy chọn), ví dụ "MATH101".
-  @Column({ length: 50, nullable: true })
-  maMon: string;
-
   @Column({ length: 100 })
   tenMonHoc: string;
 
