@@ -68,8 +68,7 @@ export class ExamRoomsService {
       .createQueryBuilder('pt')
       .leftJoinAndSelect('pt.monHocHocKy', 'mhhk')
       .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
-      .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
-      .where('pt.laHoatDong = :hd', { hd: true });
+      .leftJoinAndSelect('mhhk.hocKy', 'hocKy');
 
     if (search) qb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search}%` });
     if (maMonHocHocKy !== undefined)
@@ -96,7 +95,6 @@ export class ExamRoomsService {
       .leftJoinAndSelect('pt.monHocHocKy', 'mhhk')
       .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
       .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
-      .where('pt.laHoatDong = :hd', { hd: true })
       .orderBy('pt.moLuc', 'DESC')
       .getMany();
     return { items, total: items.length };
@@ -202,7 +200,6 @@ export class ExamRoomsService {
             thoiGianLamBai: dto.thoiGianLamBai,
             moLuc,
             dongLuc,
-            laHoatDong: true,
             trangThai: TrangThaiPhongThi.DANG_CHO,
             taoBoi,
           }),
@@ -424,8 +421,7 @@ export class ExamRoomsService {
       .innerJoin('pths.phongThi', 'pt')
       .innerJoinAndSelect('pths.hocSinh', 'hs')
       .where('pths.maHocSinh IN (:...ids)', { ids })
-      .andWhere('pt.maMonHocHocKy = :maMonHocHocKy', { maMonHocHocKy })
-      .andWhere('pt.laHoatDong = :hd', { hd: true });
+      .andWhere('pt.maMonHocHocKy = :maMonHocHocKy', { maMonHocHocKy });
     if (maPhongThiBoQua !== undefined)
       qb.andWhere('pt.maPhongThi != :bo', { bo: maPhongThiBoQua });
 
@@ -453,8 +449,7 @@ export class ExamRoomsService {
     const qb = this.phongThiRepo
       .createQueryBuilder('pt')
       .innerJoin('pt.monHocHocKy', 'mhhk')
-      .where('pt.laHoatDong = :hd', { hd: true })
-      .andWhere('pt.tenPhongThi = :ten', { ten: tenPhongThi.trim() })
+      .where('pt.tenPhongThi = :ten', { ten: tenPhongThi.trim() })
       .andWhere('mhhk.maHocKy = :maHocKy', { maHocKy: mhhk.maHocKy })
       .andWhere('pt.trangThai != :dong', { dong: TrangThaiPhongThi.DA_DONG })
       .andWhere('pt.dongLuc > :now', { now: new Date() });
@@ -478,8 +473,7 @@ export class ExamRoomsService {
       .createQueryBuilder('pths')
       .innerJoin('pths.phongThi', 'pt')
       .select('DISTINCT pths.maHocSinh', 'maHocSinh')
-      .where('pt.maMonHocHocKy = :m', { m: maMonHocHocKy })
-      .andWhere('pt.laHoatDong = :hd', { hd: true });
+      .where('pt.maMonHocHocKy = :m', { m: maMonHocHocKy });
     if (excludePhongThi !== undefined)
       qb.andWhere('pt.maPhongThi != :ex', { ex: excludePhongThi });
 

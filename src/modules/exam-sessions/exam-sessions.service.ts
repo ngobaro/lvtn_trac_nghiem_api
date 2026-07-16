@@ -55,8 +55,7 @@ export class ExamSessionsService {
     const phong = await this.phongThiRepo.findOne({
       where: { maPhongThi: dto.maPhongThi },
     });
-    if (!phong || !phong.laHoatDong)
-      throw new NotFoundException('Phòng thi không tồn tại');
+    if (!phong) throw new NotFoundException('Phòng thi không tồn tại');
 
     // Quyền vào phòng dựa trên phân công: HS phải được Admin gán vào phòng này.
     const daPhanCong = await this.phongThiHocSinhRepo.findOne({
