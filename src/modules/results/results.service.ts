@@ -264,8 +264,7 @@ export class ResultsService {
 
     const baseQb = phongThiRepo
       .createQueryBuilder('pt')
-      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = pt.maMonHocHocKy')
-      .where('pt.laHoatDong = :hd', { hd: true });
+      .leftJoin(MonHocHocKy, 'mhhk', 'mhhk.maMonHocHocKy = pt.maMonHocHocKy');
 
     if (user.vaiTro !== VaiTro.QUAN_TRI_VIEN) {
       const offerings = await this.layOfferingsGvDay(user.maNguoiDung);

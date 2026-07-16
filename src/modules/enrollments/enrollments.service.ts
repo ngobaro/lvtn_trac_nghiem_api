@@ -119,7 +119,6 @@ export class EnrollmentsService {
       .innerJoin('pths.phongThi', 'pt')
       .where('pths.maHocSinh = :hs', { hs: maHocSinh })
       .andWhere('pt.maMonHocHocKy = :mhhk', { mhhk: maMonHocHocKy })
-      .andWhere('pt.laHoatDong = :hd', { hd: true })
       .getCount();
     if (soGan > 0)
       throw new BadRequestException(

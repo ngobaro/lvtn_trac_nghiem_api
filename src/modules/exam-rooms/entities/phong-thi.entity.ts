@@ -43,10 +43,6 @@ export class PhongThi {
   @Column({ type: 'datetime' })
   dongLuc: Date;
 
-  // Xóa mềm.
-  @Column({ default: true })
-  laHoatDong: boolean;
-
   @Column({
     type: 'enum',
     enum: TrangThaiPhongThi,
