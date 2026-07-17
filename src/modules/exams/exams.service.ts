@@ -183,16 +183,6 @@ export class ExamsService {
   async updateStatus(id: number, trangThai: TrangThaiBaiThi, taoBoi?: number) {
     const baiThi = await this.findOne(id, taoBoi);
 
-    // "Đã sử dụng" do hệ thống tự đặt khi đưa vào phòng — không cho client tự đặt.
-    if (trangThai === TrangThaiBaiThi.DA_SU_DUNG)
-      throw new BadRequestException(
-        'Trạng thái "Đã sử dụng" do hệ thống tự đặt khi đưa vào phòng thi',
-      );
-    if (baiThi.trangThai === TrangThaiBaiThi.DA_SU_DUNG)
-      throw new BadRequestException(
-        'Không thể đổi trạng thái đề thi đã sử dụng',
-      );
-
     // Chỉ cho công khai đề thi đã có câu hỏi (đề công khai mới được đưa vào phòng thi)
     if (
       trangThai === TrangThaiBaiThi.CONG_KHAI &&
