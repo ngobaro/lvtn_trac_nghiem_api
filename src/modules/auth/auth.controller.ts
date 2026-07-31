@@ -12,6 +12,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../../common/interfaces/current-user.interface';
 import { ResponseMessage } from 'src/common/decorators/response-message.decorator';
 import { VaiTro } from 'src/common/enums/vai-tro.enum';
+import { LoginDto } from './dto/login.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -22,15 +23,15 @@ export class AuthController {
 
   @Post('register')
   @ResponseMessage('Đăng ký thành công')
-  register(@Body() dto: RegisterDto) { 
-    return this.authService.register(dto); 
+  register(@Body() dto: RegisterDto) {
+    return this.authService.register(dto);
   }
 
   @Post('login')
   @UseGuards(AuthGuard('local'))
   @ResponseMessage('Đăng nhập thành công')
-  login(@Req() req: any) { 
-    return this.authService.login(req.user); 
+  login(@Body() loginDto: LoginDto, @Req() req: any) {
+    return this.authService.login(req.user);
   }
 
   @Get('google')
@@ -68,8 +69,8 @@ export class AuthController {
   @Post('refresh')
   @UseGuards(AuthGuard('jwt-refresh'))
   @ResponseMessage('Cấp lại token thành công')
-  refresh(@Req() req: any) { 
-    return this.authService.refreshToken(req.user); 
+  refresh(@Req() req: any) {
+    return this.authService.refreshToken(req.user);
   }
 
   @Post('logout')
@@ -79,8 +80,8 @@ export class AuthController {
 
   @Post('forgot-password')
   @ResponseMessage('Gửi OTP thành công')
-  forgotPassword(@Body() dto: ForgotPasswordDto) { 
-    return this.authService.forgotPassword(dto.email); 
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(dto.email);
   }
 
   @Post('reset-password')
@@ -99,7 +100,7 @@ export class AuthController {
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ResponseMessage('Lấy thông tin thành công')
-  getMe(@CurrentUser() user: CurrentUserPayload) { 
-    return this.authService.getMe(user.maNguoiDung); 
+  getMe(@CurrentUser() user: CurrentUserPayload) {
+    return this.authService.getMe(user.maNguoiDung);
   }
 }

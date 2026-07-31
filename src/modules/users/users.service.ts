@@ -33,18 +33,21 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 @Injectable()
 export class UsersService {
   constructor(
-    @InjectRepository(NguoiDung) private repo: Repository<NguoiDung>,
+    @InjectRepository(NguoiDung)
+    private repo: Repository<NguoiDung>,
     @InjectRepository(NhaCungCapXacThuc)
     private xacThucRepo: Repository<NhaCungCapXacThuc>,
     private dataSource: DataSource,
     private excelParser: ExcelParserService,
-  ) {}
+  ) { }
 
   async findAll(query: QueryUserDto) {
     const { page = 1, limit = 10, vaiTro, laHoatDong, search } = query;
     const qb = this.repo.createQueryBuilder('u');
     // Luôn ẩn tài khoản Quản trị viên khỏi màn hình quản lý người dùng.
-    qb.andWhere('u.vaiTro != :adminRole', { adminRole: VaiTro.QUAN_TRI_VIEN });
+    qb.andWhere('u.vaiTro != :adminRole', {
+      adminRole: VaiTro.QUAN_TRI_VIEN
+    });
     if (vaiTro) qb.andWhere('u.vaiTro = :vaiTro', { vaiTro });
     if (laHoatDong !== undefined)
       qb.andWhere('u.laHoatDong = :laHoatDong', { laHoatDong });
@@ -89,11 +92,11 @@ export class UsersService {
     );
 
     const hash = await bcrypt.hash(data.matKhau || MAT_KHAU_MAC_DINH, 10);
-    await em.save(NhaCungCapXacThuc, {
+    await em.save(em.create(NhaCungCapXacThuc, {
       maNguoiDung: nguoiDung.maNguoiDung,
       nhaCungCap: NhaCungCap.LOCAL,
       matKhau: hash,
-    });
+    }));
 
     return nguoiDung;
   }

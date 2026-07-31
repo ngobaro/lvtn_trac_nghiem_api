@@ -1,2 +1,5 @@
 import { IsBoolean } from 'class-validator';
-export class UpdateUserStatusDto { @IsBoolean() laHoatDong: boolean; }
+export class UpdateUserStatusDto { 
+    @IsBoolean() 
+    laHoatDong: boolean; 
+}
