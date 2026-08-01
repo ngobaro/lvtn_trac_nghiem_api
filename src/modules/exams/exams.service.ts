@@ -40,7 +40,7 @@ export class ExamsService {
       .leftJoinAndSelect('bt.nguoiTao', 'nguoiTao');
 
     if (taoBoi !== undefined) qb.andWhere('bt.taoBoi = :taoBoi', { taoBoi });
-    if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search}%` });
+    if (search) qb.andWhere('bt.tieuDe LIKE :s', { s: `%${search.trim()}%` });
     if (maMonHocHocKy !== undefined)
       qb.andWhere('bt.maMonHocHocKy = :maMonHocHocKy', { maMonHocHocKy });
     if (trangThai) qb.andWhere('bt.trangThai = :trangThai', { trangThai });

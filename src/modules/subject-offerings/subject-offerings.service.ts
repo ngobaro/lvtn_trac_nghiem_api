@@ -47,7 +47,7 @@ export class SubjectOfferingsService {
       qb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc });
     if (laHoatDong !== undefined)
       qb.andWhere('mhhk.laHoatDong = :laHoatDong', { laHoatDong });
-    if (search) qb.andWhere('monHoc.tenMonHoc LIKE :s', { s: `%${search}%` });
+    if (search) qb.andWhere('monHoc.tenMonHoc LIKE :s', { s: `%${search.trim()}%` });
 
     const [items, total] = await qb
       .orderBy('mhhk.maMonHocHocKy', 'DESC')

@@ -43,7 +43,7 @@ export class QuestionsService {
         if (taoBoi !== undefined)
             qb.andWhere('ch.taoBoi = :taoBoi', { taoBoi });
         if (search)
-            qb.andWhere('ch.noiDung LIKE :s', { s: `%${search}%` });
+            qb.andWhere('ch.noiDung LIKE :s', { s: `%${search.trim()}%` });
         if (maMonHoc !== undefined)
             qb.andWhere('ch.maMonHoc = :maMonHoc', { maMonHoc });
         if (doKho !== undefined)

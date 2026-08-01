@@ -93,7 +93,7 @@ export class ResultsService {
 
     if (loc.search)
       qb.andWhere('(pt.tenPhongThi LIKE :s OR bt.tieuDe LIKE :s)', {
-        s: `%${loc.search}%`,
+        s: `%${loc.search.trim()}%`,
       });
     if (loc.maMonHoc)
       qb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc: loc.maMonHoc });
@@ -272,7 +272,7 @@ export class ResultsService {
       baseQb.andWhere('pt.maMonHocHocKy IN (:...offerings)', { offerings });
     }
     if (maMonHoc) baseQb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc });
-    if (search) baseQb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search}%` });
+    if (search) baseQb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search.trim()}%` });
 
     const total = await baseQb.clone().getCount();
 
