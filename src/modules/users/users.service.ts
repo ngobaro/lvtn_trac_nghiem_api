@@ -53,7 +53,7 @@ export class UsersService {
       qb.andWhere('u.laHoatDong = :laHoatDong', { laHoatDong });
     if (search)
       qb.andWhere('(u.tenNguoiDung LIKE :s OR u.email LIKE :s)', {
-        s: `%${search}%`,
+        s: `%${search.trim()}%`,
       });
     const [items, total] = await qb
       .orderBy('u.maNguoiDung', 'DESC')
