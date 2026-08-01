@@ -75,7 +75,7 @@ export class SemestersService {
     const qb = this.hocKyRepo.createQueryBuilder('h');
     if (search)
       qb.andWhere('(h.tenHocKy LIKE :s OR h.namHoc LIKE :s)', {
-        s: `%${search}%`,
+        s: `%${search.trim()}%`,
       });
 
     const [items, total] = await qb

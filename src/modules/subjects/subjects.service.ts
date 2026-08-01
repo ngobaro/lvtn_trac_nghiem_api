@@ -26,13 +26,12 @@ export class SubjectsService {
   // (undefined) thấy toàn bộ danh mục.
   async findAll(query: QuerySubjectDto, maGiaoVien?: number) {
     const { page = 1, limit = 10, search, laHoatDong } = query;
-
     const qb = this.monHocRepo.createQueryBuilder('m');
     if (laHoatDong !== undefined)
       qb.andWhere('m.laHoatDong = :laHoatDong', { laHoatDong });
     if (search)
       qb.andWhere('m.tenMonHoc LIKE :s', {
-        s: `%${search}%`,
+        s: `%${search.trim()}%`,
       });
 
     if (maGiaoVien !== undefined) {

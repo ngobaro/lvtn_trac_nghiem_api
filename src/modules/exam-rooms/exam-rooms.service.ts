@@ -70,7 +70,7 @@ export class ExamRoomsService {
       .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
       .leftJoinAndSelect('mhhk.hocKy', 'hocKy');
 
-    if (search) qb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search}%` });
+    if (search) qb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search.trim()}%` });
     if (maMonHocHocKy !== undefined)
       qb.andWhere('pt.maMonHocHocKy = :maMonHocHocKy', { maMonHocHocKy });
     if (trangThai) qb.andWhere('pt.trangThai = :trangThai', { trangThai });

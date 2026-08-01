@@ -15,13 +15,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     });
   }
 
-  async validate(
-    req: any,
-    accessToken: string,
-    refreshToken: string,
-    profile: any,
-    done: VerifyCallback,
-  ) {
+  async validate(_req: any,_accessToken: string,_refreshToken: string,profile: any,done: VerifyCallback,) {
     try {
       console.log('Google Profile received:', JSON.stringify(profile, null, 2));
 
@@ -31,8 +25,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
 
       const user = {
         email: profile.emails[0].value,
-        tenNguoiDung: profile.displayName ||
-          (profile.name?.givenName + ' ' + profile.name?.familyName).trim(),
+        tenNguoiDung: profile.displayName ||(profile.name?.givenName + ' ' + profile.name?.familyName).trim(),
         googleId: profile.id,
         avatar: profile.photos?.[0]?.value,
       };

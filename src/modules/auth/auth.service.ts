@@ -1,6 +1,6 @@
 import { Injectable, BadRequestException, UnauthorizedException, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { NguoiDung } from './entities/nguoi-dung.entity';
@@ -16,35 +16,52 @@ export class AuthService {
     // // Lưu OTP tạm trong memory (production nên dùng Redis)
     // private otpStore = new Map<string, { otp: string; expires: number }>();
 
-
     constructor(
         @InjectRepository(NguoiDung) private nguoiDungRepo: Repository<NguoiDung>,
         @InjectRepository(NhaCungCapXacThuc) private xacThucRepo: Repository<NhaCungCapXacThuc>,
         private jwtService: JwtService,
         private mailService: MailService,
         @Inject(CACHE_MANAGER) private cacheManager: any,
+        private dataSource: DataSource,
     ) { }
 
     async register(dto: RegisterDto) {
         const exists = await this.nguoiDungRepo.findOne({ where: { email: dto.email } });
         if (exists) throw new BadRequestException('Email đã tồn tại');
 
-        const nguoiDung = await this.nguoiDungRepo.save(
-            this.nguoiDungRepo.create({
-                tenNguoiDung: dto.tenNguoiDung,
-                email: dto.email,
-                vaiTro: dto.vaiTro,
-            })
-        );
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
 
-        const hash = await bcrypt.hash(dto.matKhau, 10);
-        await this.xacThucRepo.save({
-            maNguoiDung: nguoiDung.maNguoiDung,
-            nhaCungCap: NhaCungCap.LOCAL,
-            matKhau: hash,
-        });
+        try {
+            const nguoiDung = await queryRunner.manager.save(
+                this.nguoiDungRepo.create({
+                    tenNguoiDung: dto.tenNguoiDung,
+                    email: dto.email,
+                    vaiTro: dto.vaiTro,
+                })
+            );
 
-        return this.generateTokens(nguoiDung);
+            const hash = await bcrypt.hash(dto.matKhau, 10);
+            await queryRunner.manager.save(
+                this.xacThucRepo.create({
+                    maNguoiDung: nguoiDung.maNguoiDung,
+                    nhaCungCap: NhaCungCap.LOCAL,
+                    matKhau: hash,
+                })
+            );
+            await queryRunner.commitTransaction();
+
+            return this.generateTokens(nguoiDung);
+
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw new BadRequestException('Đăng ký thất bại, vui lòng thử lại');
+        }
+        finally {
+            await queryRunner.release();
+        }
+
     }
 
     async validateLocal(email: string, matKhau: string) {
@@ -77,6 +94,7 @@ export class AuthService {
                 googleUser.googleId,
                 googleUser.tenNguoiDung,
             );
+            // console.log('Temp token generated for new Google user:', tempToken);
             return {
                 needSelectRole: true,
                 tempToken,
@@ -130,32 +148,69 @@ export class AuthService {
             throw new BadRequestException('Tài khoản đã tồn tại, vui lòng đăng nhập lại');
         }
 
-        // Tạo user với vai trò đã chọn
-        const nguoiDung = await this.nguoiDungRepo.save(
-            this.nguoiDungRepo.create({
-                email: payload.email,
-                tenNguoiDung: payload.tenNguoiDung,
-                vaiTro,
-                laHoatDong: true,
-            })
-        );
+        const queryRunner = this.dataSource.createQueryRunner();
+        await queryRunner.connect();
+        await queryRunner.startTransaction();
+        try {
+            const nguoiDung = await queryRunner.manager.save(
+                this.nguoiDungRepo.create({
+                    email: payload.email,
+                    tenNguoiDung: payload.tenNguoiDung,
+                    vaiTro: vaiTro,
+                })
+            );
+            await queryRunner.manager.save(
+                this.xacThucRepo.create({
+                    maNguoiDung: nguoiDung.maNguoiDung,
+                    nhaCungCap: NhaCungCap.GOOGLE,
+                    maNguoiDungNhaCungCap: payload.googleId,
+                })
+            );
+            await queryRunner.commitTransaction();
+            return {
+                ...this.generateTokens(nguoiDung),
+                user: {
+                    maNguoiDung: nguoiDung.maNguoiDung,
+                    email: nguoiDung.email,
+                    tenNguoiDung: nguoiDung.tenNguoiDung,
+                    vaiTro: nguoiDung.vaiTro,
+                }
+            };
+        } catch (error) {
+            await queryRunner.rollbackTransaction();
+            throw new BadRequestException('Xác nhận vai trò thất bại, vui lòng thử lại');
+        }finally {
+            await queryRunner.release();
+        }
 
-        // Lưu xác thực Google
-        await this.xacThucRepo.save({
-            maNguoiDung: nguoiDung.maNguoiDung,
-            nhaCungCap: NhaCungCap.GOOGLE,
-            maNguoiDungNhaCungCap: payload.googleId,
-        });
+        // // Tạo user với vai trò đã chọn
+        // const nguoiDung = await this.nguoiDungRepo.save(
+        //     this.nguoiDungRepo.create({
+        //         email: payload.email,
+        //         tenNguoiDung: payload.tenNguoiDung,
+        //         vaiTro,
+        //         laHoatDong: true,
+        //     })
+        // );
 
-        return {
-            ...this.generateTokens(nguoiDung),
-            user: {
-                maNguoiDung: nguoiDung.maNguoiDung,
-                email: nguoiDung.email,
-                tenNguoiDung: nguoiDung.tenNguoiDung,
-                vaiTro: nguoiDung.vaiTro,
-            }
-        };
+        // // Lưu xác thực Google
+        // await this.xacThucRepo.save(
+        //     this.xacThucRepo.create({
+        //         maNguoiDung: nguoiDung.maNguoiDung,
+        //         nhaCungCap: NhaCungCap.GOOGLE,
+        //         maNguoiDungNhaCungCap: payload.googleId,
+        //     })
+        // );
+
+        // return {
+        //     ...this.generateTokens(nguoiDung),
+        //     user: {
+        //         maNguoiDung: nguoiDung.maNguoiDung,
+        //         email: nguoiDung.email,
+        //         tenNguoiDung: nguoiDung.tenNguoiDung,
+        //         vaiTro: nguoiDung.vaiTro,
+        //     }
+        // };
     }
 
     async refreshToken(nguoiDung: any) {
@@ -212,7 +267,7 @@ export class AuthService {
 
         await this.cacheManager.del(`otp:${email}`);
 
-        return { message: 'Đặt lại mật khẩu thành công' };
+        return { email, updatedAt: new Date() };
     }
 
     async changePassword(maNguoiDung: number, matKhauHienTai: string, matKhauMoi: string) {
@@ -234,7 +289,7 @@ export class AuthService {
     }
 
     async getMe(maNguoiDung: number) {
-        const nguoiDung = await this.nguoiDungRepo.findOne({ where: { maNguoiDung } });
+        const nguoiDung = await this.nguoiDungRepo.findOne({ where: { maNguoiDung: maNguoiDung } });
         if (!nguoiDung) return null;
 
         // Chỉ tài khoản có xác thực LOCAL (đã đặt mật khẩu) mới đổi được mật khẩu.
