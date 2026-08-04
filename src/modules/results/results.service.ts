@@ -65,7 +65,7 @@ export class ResultsService {
 
   // Dựng truy vấn lịch sử thi của 1 học sinh: liệt kê các phòng em được gán, chỉ
   // giữ dòng khi em ĐÃ CÓ KẾT QUẢ (đã nộp — thấy ngay, kể cả phòng đang mở) HOẶC
-  // phòng ĐÃ ĐÓNG (khi đó phòng em không thi hiện "Không tham gia"). Trả về
+  // phòng ĐÃ ĐÓNG (khi đó phòng em không thi hiện "Vắng"). Trả về
   // QueryBuilder CHƯA select để nơi gọi tự áp select/phân trang/sắp xếp.
   private qbLichSuHocSinh(
     maHocSinh: number,
