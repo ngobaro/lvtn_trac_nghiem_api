@@ -175,6 +175,9 @@ export class ResultsService {
 
     await this.kiemTraQuyenXem(ketQua, user);
 
+    // HS chỉ được xem đáp án mình đã chọn -> ẩn cờ đáp án đúng (tránh lộ ngân hàng đề).
+    const anDapAn = user.vaiTro === VaiTro.HOC_SINH;
+
     const cauHoiBaiLams = await this.dataSource
       .getRepository(CauHoiBaiLam)
       .find({
@@ -207,7 +210,14 @@ export class ResultsService {
         hinhAnh: c.cauHoi.hinhAnh,
         loaiCauHoi: c.cauHoi.loaiCauHoi,
         dung,
-        luaChons,
+        // Cờ `dung` vẫn tính ở server nên FE hiện được Đúng/Sai dù đã ẩn đáp án.
+        luaChons: anDapAn
+          ? luaChons.map((lc) => ({
+              maLuaChon: lc.maLuaChon,
+              noiDung: lc.noiDung,
+              daChon: lc.daChon,
+            }))
+          : luaChons,
       };
     });
 
