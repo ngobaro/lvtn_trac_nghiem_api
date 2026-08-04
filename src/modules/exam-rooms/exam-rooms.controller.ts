@@ -37,11 +37,17 @@ export class ExamRoomsController {
     return this.examRoomsService.findAllForHocSinh(user.maNguoiDung);
   }
 
+  // Admin thấy mọi phòng; giáo viên chỉ thấy phòng do mình tạo.
   @Get()
-  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy danh sách phòng thi thành công')
-  findAll(@Query() query: QueryExamRoomDto) {
-    return this.examRoomsService.findAll(query);
+  findAll(
+    @Query() query: QueryExamRoomDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const taoBoi =
+      user.vaiTro === VaiTro.QUAN_TRI_VIEN ? undefined : user.maNguoiDung;
+    return this.examRoomsService.findAll(query, taoBoi);
   }
 
   // Admin: HS đã được gán vào phòng khác của môn-học-kỳ (để FE ẩn khỏi picker).
@@ -49,7 +55,10 @@ export class ExamRoomsController {
   @Roles(VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy danh sách học sinh đã gán thành công')
   layHsDaGan(@Query() q: QueryAssignedStudentsDto) {
-    return this.examRoomsService.layHocSinhDaGan(q.maMonHocHocKy, q.excludePhongThi);
+    return this.examRoomsService.layHocSinhDaGan(
+      q.maMonHocHocKy,
+      q.excludePhongThi,
+    );
   }
 
   // Học sinh: nhập mã tham gia để tự vào phòng (thay cho việc Admin gán tay).
@@ -71,50 +80,55 @@ export class ExamRoomsController {
     @CurrentUser() user: CurrentUserPayload,
   ) {
     const phong = await this.examRoomsService.findOne(+id);
-    // Mã tham gia chỉ Admin được thấy.
-    return user.vaiTro === VaiTro.QUAN_TRI_VIEN
-      ? phong
-      : this.examRoomsService.anMaThamGia(phong);
+    // Mã tham gia chỉ Admin và người tạo phòng được thấy.
+    const thayMa =
+      user.vaiTro === VaiTro.QUAN_TRI_VIEN || phong.taoBoi === user.maNguoiDung;
+    return thayMa ? phong : this.examRoomsService.anMaThamGia(phong);
   }
 
   @Get(':id/members')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy danh sách thành viên phòng thi thành công')
-  getMembers(@Param('id') id: number) {
-    return this.examRoomsService.getMembers(+id);
+  getMembers(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
+    return this.examRoomsService.getMembers(+id, user);
   }
 
   @Post()
-  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Tạo phòng thi thành công')
   create(
     @Body() dto: CreateExamRoomDto,
     @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.examRoomsService.create(dto, user.maNguoiDung);
+    return this.examRoomsService.create(dto, user);
   }
 
   @Patch(':id')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Cập nhật phòng thi thành công')
-  update(@Param('id') id: number, @Body() dto: UpdateExamRoomDto) {
-    return this.examRoomsService.update(+id, dto);
+  update(
+    @Param('id') id: number,
+    @Body() dto: UpdateExamRoomDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.examRoomsService.update(+id, dto, user);
   }
 
   @Patch(':id/status')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Cập nhật trạng thái phòng thi thành công')
   updateStatus(
     @Param('id') id: number,
     @Body() dto: UpdateExamRoomStatusDto,
+    @CurrentUser() user: CurrentUserPayload,
   ) {
-    return this.examRoomsService.updateStatus(+id, dto.trangThai);
+    return this.examRoomsService.updateStatus(+id, dto.trangThai, user);
   }
 
   @Delete(':id')
-  @Roles(VaiTro.QUAN_TRI_VIEN)
+  @Roles(VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Xóa phòng thi thành công')
-  remove(@Param('id') id: number) {
-    return this.examRoomsService.remove(+id);
+  remove(@Param('id') id: number, @CurrentUser() user: CurrentUserPayload) {
+    return this.examRoomsService.remove(+id, user);
   }
 }

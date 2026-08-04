@@ -10,6 +10,7 @@ import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { CauHoiBaiThi } from '../exams/entities/cau-hoi-bai-thi.entity';
 import { GhiDanh } from '../enrollments/entities/ghi-danh.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
+import { PhanCongGiangDay } from '../teaching-assignments/entities/phan-cong-giang-day.entity';
 import { ExamSessionsModule } from '../exam-sessions/exam-sessions.module';
 
 @Module({
@@ -23,6 +24,7 @@ import { ExamSessionsModule } from '../exam-sessions/exam-sessions.module';
       CauHoiBaiThi,
       GhiDanh,
       MonHocHocKy,
+      PhanCongGiangDay,
     ]),
     ExamSessionsModule,
   ],
