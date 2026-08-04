@@ -7,6 +7,7 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, In } from 'typeorm';
+import { randomInt } from 'crypto';
 import { PhongThi } from './entities/phong-thi.entity';
 import { PhongThiBaiThi } from './entities/phong-thi-bai-thi.entity';
 import { PhongThiHocSinh } from './entities/phong-thi-hoc-sinh.entity';
@@ -17,6 +18,8 @@ import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity
 import { CreateExamRoomDto } from './dto/create-exam-room.dto';
 import { UpdateExamRoomDto } from './dto/update-exam-room.dto';
 import { QueryExamRoomDto } from './dto/query-exam-room.dto';
+import { JoinByCodeDto } from './dto/join-by-code.dto';
+import { HinhThucThamGia } from '../../common/enums/hinh-thuc-tham-gia.enum';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
 import { TrangThaiThanhVien } from '../../common/enums/trang-thai-thanh-vien.enum';
@@ -70,7 +73,8 @@ export class ExamRoomsService {
       .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
       .leftJoinAndSelect('mhhk.hocKy', 'hocKy');
 
-    if (search) qb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search.trim()}%` });
+    if (search)
+      qb.andWhere('pt.tenPhongThi LIKE :s', { s: `%${search.trim()}%` });
     if (maMonHocHocKy !== undefined)
       qb.andWhere('pt.maMonHocHocKy = :maMonHocHocKy', { maMonHocHocKy });
     if (trangThai) qb.andWhere('pt.trangThai = :trangThai', { trangThai });
@@ -97,7 +101,16 @@ export class ExamRoomsService {
       .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
       .orderBy('pt.moLuc', 'DESC')
       .getMany();
-    return { items, total: items.length };
+    // Mã tham gia là bí mật vận hành của Admin — không trả về cho học sinh.
+    return {
+      items: items.map((p) => this.anMaThamGia(p)),
+      total: items.length,
+    };
+  }
+
+  // Che mã tham gia với người dùng không phải Admin.
+  anMaThamGia(phong: PhongThi): PhongThi {
+    return { ...phong, maThamGia: null };
   }
 
   async findOne(id: number) {
@@ -184,7 +197,19 @@ export class ExamRoomsService {
     await this.kiemTraTrungTen(dto.tenPhongThi, dto.maMonHocHocKy);
     await this.kiemTraDsBaiThi(dto.maBaiThis, dto.maMonHocHocKy);
     await this.kiemTraThoiLuong(dto.thoiGianLamBai, dto.maBaiThis);
-    await this.kiemTraDsHocSinh(dto.maHocSinhs, dto.maMonHocHocKy);
+
+    // Chế độ mã tham gia: phòng mở rỗng, HS tự nhập mã để vào (ghi dòng
+    // PHONG_THI_HOC_SINH lúc đó). Chế độ gán tay: bắt buộc có danh sách HS.
+    const dungMaThamGia = dto.hinhThucThamGia === HinhThucThamGia.MA_THAM_GIA;
+    const dsHocSinh = dungMaThamGia ? [] : (dto.maHocSinhs ?? []);
+    if (!dungMaThamGia) {
+      if (dsHocSinh.length === 0)
+        throw new BadRequestException(
+          'Vui lòng gán ít nhất 1 học sinh vào phòng',
+        );
+      await this.kiemTraDsHocSinh(dsHocSinh, dto.maMonHocHocKy);
+    }
+    const maThamGia = dungMaThamGia ? await this.sinhMaThamGia() : null;
 
     // Thi đồng loạt: giờ đóng phòng = giờ mở + thời lượng làm bài (cấp phòng).
     const dongLuc = new Date(moLuc.getTime() + dto.thoiGianLamBai * 60000);
@@ -197,6 +222,8 @@ export class ExamRoomsService {
             maMonHocHocKy: dto.maMonHocHocKy,
             tenPhongThi: dto.tenPhongThi,
             cheDoCauHoi: dto.cheDoCauHoi,
+            hinhThucThamGia: dto.hinhThucThamGia,
+            maThamGia,
             thoiGianLamBai: dto.thoiGianLamBai,
             moLuc,
             dongLuc,
@@ -217,7 +244,7 @@ export class ExamRoomsService {
 
         await em.save(
           PhongThiHocSinh,
-          dto.maHocSinhs.map((maHocSinh) =>
+          dsHocSinh.map((maHocSinh) =>
             em.create(PhongThiHocSinh, {
               maPhongThi: phongThi.maPhongThi,
               maHocSinh,
@@ -254,6 +281,28 @@ export class ExamRoomsService {
       dto.maBaiThis ?? phong.phongThiBaiThis.map((x) => x.maBaiThi);
     await this.kiemTraThoiLuong(thoiGianLamBai, dsBaiThi);
 
+    // Đổi hình thức tham gia (chỉ khi phòng chưa mở). Lưu ý: ở chế độ mã tham
+    // gia, PHONG_THI_HOC_SINH chính là danh sách HS đã nhập mã — chỉ được xóa
+    // đúng lúc hình thức thay đổi, tuyệt đối không đụng vào ở lần sửa khác.
+    const hinhThuc = dto.hinhThucThamGia ?? phong.hinhThucThamGia;
+    const doiHinhThuc = hinhThuc !== phong.hinhThucThamGia;
+    const dungMaThamGia = hinhThuc === HinhThucThamGia.MA_THAM_GIA;
+
+    let maThamGia = phong.maThamGia;
+    if (dungMaThamGia) {
+      if (dto.maHocSinhs)
+        throw new BadRequestException(
+          'Phòng dùng mã tham gia không nhận danh sách học sinh gán tay',
+        );
+      maThamGia = phong.maThamGia ?? (await this.sinhMaThamGia());
+    } else {
+      maThamGia = null;
+      if (doiHinhThuc && !dto.maHocSinhs?.length)
+        throw new BadRequestException(
+          'Vui lòng gán ít nhất 1 học sinh vào phòng',
+        );
+    }
+
     if (dto.maHocSinhs)
       await this.kiemTraDsHocSinh(dto.maHocSinhs, phong.maMonHocHocKy, id);
 
@@ -262,10 +311,16 @@ export class ExamRoomsService {
         await em.update(PhongThi, id, {
           tenPhongThi: dto.tenPhongThi ?? phong.tenPhongThi,
           cheDoCauHoi: dto.cheDoCauHoi ?? phong.cheDoCauHoi,
+          hinhThucThamGia: hinhThuc,
+          maThamGia,
           thoiGianLamBai,
           moLuc,
           dongLuc,
         });
+
+        // Chuyển sang mã tham gia: danh sách gán tay cũ không còn ý nghĩa.
+        if (doiHinhThuc && dungMaThamGia)
+          await em.delete(PhongThiHocSinh, { maPhongThi: id });
 
         if (dto.maBaiThis) {
           await em.delete(PhongThiBaiThi, { maPhongThi: id });
@@ -369,6 +424,106 @@ export class ExamRoomsService {
           b.nguoiDung?.tenNguoiDung ?? '',
         ),
       );
+  }
+
+  // Học sinh nhập mã để vào phòng. Nhập đúng -> ghi 1 dòng PHONG_THI_HOC_SINH,
+  // từ đó mọi luồng sẵn có (danh sách phòng, rào vào thi, điểm, vắng mặt) chạy
+  // y như phòng được Admin gán. Vẫn giữ nguyên ràng buộc học vụ.
+  async thamGiaBangMa(dto: JoinByCodeDto, maHocSinh: number) {
+    const ma = dto.maThamGia.trim().toUpperCase();
+
+    // Chỉ tìm trong phòng CHƯA kết thúc (mã được tái dùng sau khi phòng đóng).
+    const phong = await this.phongThiRepo
+      .createQueryBuilder('pt')
+      .where('pt.maThamGia = :ma', { ma })
+      .andWhere('pt.hinhThucThamGia = :ht', {
+        ht: HinhThucThamGia.MA_THAM_GIA,
+      })
+      .andWhere('pt.trangThai != :dong', { dong: TrangThaiPhongThi.DA_DONG })
+      .andWhere('pt.dongLuc > :now', { now: new Date() })
+      .getOne();
+    if (!phong)
+      throw new NotFoundException(
+        'Mã tham gia không đúng hoặc phòng thi đã kết thúc',
+      );
+
+    const daCo = await this.phongThiHocSinhRepo.findOne({
+      where: { maPhongThi: phong.maPhongThi, maHocSinh },
+    });
+
+    if (!daCo) {
+      // Tái dùng nguyên bộ kiểm tra của luồng gán tay: phải đã ghi danh
+      // môn-học-kỳ và chưa ở phòng khác của cùng môn.
+      await this.kiemTraDsHocSinh(
+        [maHocSinh],
+        phong.maMonHocHocKy,
+        phong.maPhongThi,
+      );
+      try {
+        await this.phongThiHocSinhRepo.save(
+          this.phongThiHocSinhRepo.create({
+            maPhongThi: phong.maPhongThi,
+            maHocSinh,
+          }),
+        );
+      } catch (e) {
+        // Hai request nhập mã gần như đồng thời: unique index chặn bản ghi thứ
+        // hai -> coi như đã vào phòng, không báo lỗi.
+        if (!this.laLoiTrungKhoa(e)) throw e;
+      }
+    }
+
+    // Trả payload gọn: findOne kèm quan hệ sẽ lộ danh sách bạn cùng phòng.
+    return {
+      maPhongThi: phong.maPhongThi,
+      tenPhongThi: phong.tenPhongThi,
+      trangThai: phong.trangThai,
+      moLuc: phong.moLuc,
+      dongLuc: phong.dongLuc,
+      daThamGiaTruocDo: !!daCo,
+    };
+  }
+
+  // Bảng chữ bỏ ký tự dễ đọc nhầm khi chép tay: 0/O, 1/I.
+  private static readonly BANG_CHU_MA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+  private async sinhMaThamGia(): Promise<string> {
+    for (let i = 0; i < 10; i++) {
+      const ma = Array.from(
+        { length: 6 },
+        () =>
+          ExamRoomsService.BANG_CHU_MA[
+            randomInt(ExamRoomsService.BANG_CHU_MA.length)
+          ],
+      ).join('');
+      if (!(await this.maDangDuocDung(ma))) return ma;
+    }
+    throw new BadRequestException(
+      'Không sinh được mã tham gia, vui lòng thử lại',
+    );
+  }
+
+  // Mã chỉ cần độc nhất giữa các phòng CHƯA kết thúc (giống kiemTraTrungTen).
+  private maDangDuocDung(ma: string) {
+    return this.phongThiRepo
+      .createQueryBuilder('pt')
+      .where('pt.maThamGia = :ma', { ma })
+      .andWhere('pt.trangThai != :dong', { dong: TrangThaiPhongThi.DA_DONG })
+      .andWhere('pt.dongLuc > :now', { now: new Date() })
+      .getExists();
+  }
+
+  private laLoiTrungKhoa(e: unknown): boolean {
+    const loi = e as {
+      code?: string;
+      errno?: number;
+      driverError?: { errno?: number };
+    };
+    return (
+      loi?.code === 'ER_DUP_ENTRY' ||
+      loi?.errno === 1062 ||
+      loi?.driverError?.errno === 1062
+    );
   }
 
   private async kiemTraMonHocHocKy(maMonHocHocKy: number) {

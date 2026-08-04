@@ -22,6 +22,7 @@ import { UpdateExamRoomDto } from './dto/update-exam-room.dto';
 import { UpdateExamRoomStatusDto } from './dto/update-exam-room-status.dto';
 import { QueryExamRoomDto } from './dto/query-exam-room.dto';
 import { QueryAssignedStudentsDto } from './dto/query-assigned-students.dto';
+import { JoinByCodeDto } from './dto/join-by-code.dto';
 
 @Controller('exam-rooms')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -51,11 +52,29 @@ export class ExamRoomsController {
     return this.examRoomsService.layHocSinhDaGan(q.maMonHocHocKy, q.excludePhongThi);
   }
 
+  // Học sinh: nhập mã tham gia để tự vào phòng (thay cho việc Admin gán tay).
+  @Post('join-by-code')
+  @Roles(VaiTro.HOC_SINH)
+  @ResponseMessage('Tham gia phòng thi thành công')
+  thamGiaBangMa(
+    @Body() dto: JoinByCodeDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    return this.examRoomsService.thamGiaBangMa(dto, user.maNguoiDung);
+  }
+
   @Get(':id')
   @Roles(VaiTro.HOC_SINH, VaiTro.GIAO_VIEN, VaiTro.QUAN_TRI_VIEN)
   @ResponseMessage('Lấy thông tin phòng thi thành công')
-  findOne(@Param('id') id: number) {
-    return this.examRoomsService.findOne(+id);
+  async findOne(
+    @Param('id') id: number,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    const phong = await this.examRoomsService.findOne(+id);
+    // Mã tham gia chỉ Admin được thấy.
+    return user.vaiTro === VaiTro.QUAN_TRI_VIEN
+      ? phong
+      : this.examRoomsService.anMaThamGia(phong);
   }
 
   @Get(':id/members')
