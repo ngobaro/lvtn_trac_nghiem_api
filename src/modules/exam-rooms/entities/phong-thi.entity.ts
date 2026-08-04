@@ -9,6 +9,7 @@ import {
 import { NguoiDung } from '../../auth/entities/nguoi-dung.entity';
 import { MonHocHocKy } from '../../subject-offerings/entities/mon-hoc-hoc-ky.entity';
 import { CheDoCauHoi } from '../../../common/enums/che-do-cau-hoi.enum';
+import { HinhThucThamGia } from '../../../common/enums/hinh-thuc-tham-gia.enum';
 import { TrangThaiPhongThi } from '../../../common/enums/trang-thai-phong-thi.enum';
 import { ThanhVienPhong } from './thanh-vien-phong.entity';
 import { PhongThiBaiThi } from './phong-thi-bai-thi.entity';
@@ -32,6 +33,20 @@ export class PhongThi {
 
   @Column({ type: 'enum', enum: CheDoCauHoi })
   cheDoCauHoi: CheDoCauHoi;
+
+  // Cách học sinh vào phòng: Admin gán tay, hoặc học sinh tự nhập mã tham gia.
+  @Column({
+    type: 'enum',
+    enum: HinhThucThamGia,
+    default: HinhThucThamGia.GAN_HOC_SINH,
+  })
+  hinhThucThamGia: HinhThucThamGia;
+
+  // Mã tham gia 6 ký tự — chỉ có khi hinhThucThamGia = MA_THAM_GIA, ngược lại
+  // null. Không đặt unique ở DB: mã được tái dùng sau khi phòng đã kết thúc,
+  // chống trùng ở tầng app trong phạm vi phòng chưa kết thúc (giống tenPhongThi).
+  @Column({ type: 'varchar', length: 8, nullable: true })
+  maThamGia: string | null;
 
   // Thời lượng làm bài (phút) ở cấp phòng — dùng chung cho mọi đề trong phòng.
   @Column({ type: 'int' })
