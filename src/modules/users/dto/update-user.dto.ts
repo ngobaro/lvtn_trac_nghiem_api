@@ -7,6 +7,10 @@ export class UpdateUserDto {
   tenNguoiDung?: string;
 
   @IsOptional()
+  @MaxLength(100)
+  email?: string;
+
+  @IsOptional()
   @IsIn([VaiTro.HOC_SINH, VaiTro.GIAO_VIEN], {
     message: 'Vai trò không hợp lệ',
   })
