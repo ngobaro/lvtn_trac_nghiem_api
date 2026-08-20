@@ -16,6 +16,7 @@ import { ExamQuestionOrderDto } from './dto/exam-question-order.dto';
 import { QueryExamDto } from './dto/query-exam.dto';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { BaiLam } from '../exam-sessions/entities/bai-lam.entity';
+import { daKetThuc } from '../../common/utils/hoc-ky.util';
 
 @Injectable()
 export class ExamsService {
@@ -86,14 +87,21 @@ export class ExamsService {
     return { daThi: soBaiLam > 0, coPhong: soPhong > 0 };
   }
 
-  // Kiểm tra giáo viên có được phân dạy môn-học-kỳ này không.
+  // Kiểm tra giáo viên có được phân dạy môn-học-kỳ này không, và học kỳ đó
+  // còn hạn không (học kỳ đã kết thúc thì học sinh không vào thi được nữa).
   private async kiemTraPhanCong(maMonHocHocKy: number, taoBoi: number) {
     const pc = await this.phanCongRepo.findOne({
       where: { maMonHocHocKy, maGiaoVien: taoBoi },
+      relations: { monHocHocKy: { hocKy: true } },
     });
     if (!pc)
       throw new BadRequestException(
         'Bạn không được phân dạy môn học của học kỳ này',
+      );
+    const hocKy = pc.monHocHocKy?.hocKy;
+    if (hocKy && daKetThuc(hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể tạo đề thi cho môn học này',
       );
   }
 

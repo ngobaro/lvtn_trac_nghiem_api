@@ -22,4 +22,10 @@ export class QuerySubjectOfferingDto extends PaginationDto {
   @Transform(({ value }) => value === 'true')
   @IsBoolean()
   laHoatDong?: boolean;
+
+  // Chỉ lấy môn của học kỳ chưa kết thúc (dùng cho form tạo đề thi/phòng thi).
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  @IsBoolean()
+  chuaKetThuc?: boolean;
 }

@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { PhanCongGiangDay } from './entities/phan-cong-giang-day.entity';
 import { MonHocHocKy } from '../subject-offerings/entities/mon-hoc-hoc-ky.entity';
-import { HocKy } from '../semesters/entities/hoc-ky.entity';
+import { daKetThuc } from '../../common/utils/hoc-ky.util';
 import { NguoiDung } from '../auth/entities/nguoi-dung.entity';
 import { BaiThi } from '../exams/entities/bai-thi.entity';
 import { VaiTro } from '../../common/enums/vai-tro.enum';
@@ -45,20 +45,15 @@ export class TeachingAssignmentsService {
   }
 
   // Học kỳ đã kết thúc thì khóa mọi thay đổi phân công.
-  private daKetThuc(hocKy: HocKy): boolean {
-    const raw = hocKy.ngayKetThuc as unknown as string | Date;
-    const kt =
-      typeof raw === 'string' ? raw.slice(0, 10) : raw.toISOString().slice(0, 10);
-    return new Date().toISOString().slice(0, 10) >= kt;
-  }
-
   private async kiemTraHocKyConMo(maMonHocHocKy: number, hanhDong: string) {
     const mhhk = await this.mhhkRepo.findOne({
       where: { maMonHocHocKy },
       relations: { hocKy: true },
     });
-    if (mhhk?.hocKy && this.daKetThuc(mhhk.hocKy))
-      throw new BadRequestException(`Học kỳ đã kết thúc, không thể ${hanhDong}`);
+    if (mhhk?.hocKy && daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        `Học kỳ đã kết thúc, không thể ${hanhDong}`,
+      );
   }
 
   async create(dto: CreateTeachingAssignmentDto) {
@@ -68,7 +63,7 @@ export class TeachingAssignmentsService {
     });
     if (!mhhk)
       throw new BadRequestException('Môn học của học kỳ không tồn tại');
-    if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
+    if (mhhk.hocKy && daKetThuc(mhhk.hocKy))
       throw new BadRequestException(
         'Học kỳ đã kết thúc, không thể phân công giáo viên',
       );
@@ -99,7 +94,7 @@ export class TeachingAssignmentsService {
     });
     if (!mhhk)
       throw new BadRequestException('Môn học của học kỳ không tồn tại');
-    if (mhhk.hocKy && this.daKetThuc(mhhk.hocKy))
+    if (mhhk.hocKy && daKetThuc(mhhk.hocKy))
       throw new BadRequestException(
         'Học kỳ đã kết thúc, không thể phân công giáo viên',
       );

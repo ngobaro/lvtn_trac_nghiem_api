@@ -10,6 +10,11 @@ import { HocKy } from './entities/hoc-ky.entity';
 import { CreateSemesterDto } from './dto/create-semester.dto';
 import { UpdateSemesterDto } from './dto/update-semester.dto';
 import { QuerySemesterDto } from './dto/query-semester.dto';
+import {
+  chuanHoaNgay,
+  daKetThuc,
+  homNay,
+} from '../../common/utils/hoc-ky.util';
 
 @Injectable()
 export class SemestersService {
@@ -18,23 +23,9 @@ export class SemestersService {
     private readonly hocKyRepo: Repository<HocKy>,
   ) {}
 
-  // Ngày hôm nay theo UTC (khớp timezone: 'Z'), dạng 'YYYY-MM-DD'.
-  private homNay(): string {
-    return new Date().toISOString().slice(0, 10);
-  }
-
-  private chuanHoaNgay(ngay: Date | string): string {
-    return typeof ngay === 'string'
-      ? ngay.slice(0, 10)
-      : ngay.toISOString().slice(0, 10);
-  }
-
   // daKetThuc là trường tính động (không lưu DB): đã đến/qua ngày kết thúc.
   private ganTrangThai(hocKy: HocKy) {
-    return {
-      ...hocKy,
-      daKetThuc: this.homNay() >= this.chuanHoaNgay(hocKy.ngayKetThuc),
-    };
+    return { ...hocKy, daKetThuc: daKetThuc(hocKy) };
   }
 
   // Kiểm tra ràng buộc ngày. batDauDaDoi=true mới chặn ngày bắt đầu trong quá khứ.
@@ -43,11 +34,11 @@ export class SemestersService {
     ngayKetThuc: string,
     batDauDaDoi: boolean,
   ) {
-    const bd = this.chuanHoaNgay(ngayBatDau);
-    const kt = this.chuanHoaNgay(ngayKetThuc);
+    const bd = chuanHoaNgay(ngayBatDau);
+    const kt = chuanHoaNgay(ngayKetThuc);
     if (kt <= bd)
       throw new BadRequestException('Ngày kết thúc phải sau ngày bắt đầu');
-    if (batDauDaDoi && bd < this.homNay())
+    if (batDauDaDoi && bd < homNay())
       throw new BadRequestException('Ngày bắt đầu không được ở quá khứ');
   }
 
@@ -110,15 +101,14 @@ export class SemestersService {
     if (!hocKy) throw new NotFoundException('Học kỳ không tồn tại');
 
     // Học kỳ đã kết thúc thì không cho chỉnh sửa nữa.
-    if (this.homNay() >= this.chuanHoaNgay(hocKy.ngayKetThuc))
+    if (daKetThuc(hocKy))
       throw new BadRequestException('Học kỳ đã kết thúc, không thể chỉnh sửa');
 
-    const ngayCu = this.chuanHoaNgay(hocKy.ngayBatDau);
+    const ngayCu = chuanHoaNgay(hocKy.ngayBatDau);
     const ngayBatDau = dto.ngayBatDau ?? ngayCu;
-    const ngayKetThuc = dto.ngayKetThuc ?? this.chuanHoaNgay(hocKy.ngayKetThuc);
+    const ngayKetThuc = dto.ngayKetThuc ?? chuanHoaNgay(hocKy.ngayKetThuc);
     const batDauDaDoi =
-      dto.ngayBatDau !== undefined &&
-      this.chuanHoaNgay(dto.ngayBatDau) !== ngayCu;
+      dto.ngayBatDau !== undefined && chuanHoaNgay(dto.ngayBatDau) !== ngayCu;
     this.kiemTraNgay(ngayBatDau, ngayKetThuc, batDauDaDoi);
 
     const tenHocKy = dto.tenHocKy ?? hocKy.tenHocKy;

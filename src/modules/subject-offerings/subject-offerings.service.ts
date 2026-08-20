@@ -12,6 +12,11 @@ import { MonHoc } from '../subjects/entities/mon-hoc.entity';
 import { HocKy } from '../semesters/entities/hoc-ky.entity';
 import { CreateSubjectOfferingDto } from './dto/create-subject-offering.dto';
 import { QuerySubjectOfferingDto } from './dto/query-subject-offering.dto';
+import {
+  DK_HOC_KY_CHUA_KET_THUC,
+  daKetThuc,
+  homNay,
+} from '../../common/utils/hoc-ky.util';
 
 @Injectable()
 export class SubjectOfferingsService {
@@ -34,6 +39,7 @@ export class SubjectOfferingsService {
       laHoatDong,
       maHocKy,
       maMonHoc,
+      chuaKetThuc,
     } = query;
 
     const qb = this.mhhkRepo
@@ -47,7 +53,11 @@ export class SubjectOfferingsService {
       qb.andWhere('mhhk.maMonHoc = :maMonHoc', { maMonHoc });
     if (laHoatDong !== undefined)
       qb.andWhere('mhhk.laHoatDong = :laHoatDong', { laHoatDong });
-    if (search) qb.andWhere('monHoc.tenMonHoc LIKE :s', { s: `%${search.trim()}%` });
+    // Dùng khi cần danh sách để "tạo mới" (đề thi, phòng thi): học kỳ đã kết
+    // thúc thì loại khỏi lựa chọn. Mặc định vẫn trả đủ để xem lịch sử.
+    if (chuaKetThuc) qb.andWhere(DK_HOC_KY_CHUA_KET_THUC, { homNay: homNay() });
+    if (search)
+      qb.andWhere('monHoc.tenMonHoc LIKE :s', { s: `%${search.trim()}%` });
 
     const [items, total] = await qb
       .orderBy('mhhk.maMonHocHocKy', 'DESC')
@@ -66,17 +76,6 @@ export class SubjectOfferingsService {
     return mhhk;
   }
 
-  // Học kỳ đã kết thúc (today >= ngayKetThuc) thì khóa mọi thay đổi môn học.
-  private daKetThuc(hocKy: HocKy): boolean {
-    // TypeORM trả cột `date` dưới dạng chuỗi 'YYYY-MM-DD' lúc chạy.
-    const raw = hocKy.ngayKetThuc as unknown as string | Date;
-    const kt =
-      typeof raw === 'string'
-        ? raw.slice(0, 10)
-        : raw.toISOString().slice(0, 10);
-    return new Date().toISOString().slice(0, 10) >= kt;
-  }
-
   async create(dto: CreateSubjectOfferingDto) {
     const monHoc = await this.monHocRepo.findOne({
       where: { maMonHoc: dto.maMonHoc },
@@ -86,7 +85,7 @@ export class SubjectOfferingsService {
       where: { maHocKy: dto.maHocKy },
     });
     if (!hocKy) throw new BadRequestException('Học kỳ không tồn tại');
-    if (this.daKetThuc(hocKy))
+    if (daKetThuc(hocKy))
       throw new BadRequestException(
         'Học kỳ đã kết thúc, không thể mở thêm môn học',
       );
@@ -109,7 +108,7 @@ export class SubjectOfferingsService {
   // Xóa mềm. Chặn nếu đã có học sinh đăng ký (HS tự đăng ký qua GHI_DANH).
   async remove(id: number) {
     const mhhk = await this.findOne(id);
-    if (this.daKetThuc(mhhk.hocKy))
+    if (daKetThuc(mhhk.hocKy))
       throw new BadRequestException('Học kỳ đã kết thúc, không thể gỡ môn học');
     const soDangKy = await this.ghiDanhRepo.countBy({ maMonHocHocKy: id });
     if (soDangKy > 0)
@@ -122,6 +121,8 @@ export class SubjectOfferingsService {
   }
 
   // Danh sách môn-học-kỳ mà 1 giáo viên được phân dạy (kèm quan hệ hiển thị).
+  // Chỉ phục vụ 2 form tạo mới (đề thi, phòng thi) nên lọc luôn môn đã gỡ và
+  // học kỳ đã kết thúc — không nơi nào cần danh sách này để xem lịch sử.
   async layDangDay(maGiaoVien: number) {
     return this.mhhkRepo
       .createQueryBuilder('mhhk')
@@ -133,6 +134,8 @@ export class SubjectOfferingsService {
       )
       .leftJoinAndSelect('mhhk.monHoc', 'monHoc')
       .leftJoinAndSelect('mhhk.hocKy', 'hocKy')
+      .where('mhhk.laHoatDong = :hd', { hd: true })
+      .andWhere(DK_HOC_KY_CHUA_KET_THUC, { homNay: homNay() })
       .orderBy('mhhk.maMonHocHocKy', 'DESC')
       .getMany();
   }

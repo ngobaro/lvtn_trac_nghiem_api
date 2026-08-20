@@ -27,6 +27,7 @@ import { HinhThucThamGia } from '../../common/enums/hinh-thuc-tham-gia.enum';
 import { TrangThaiBaiThi } from '../../common/enums/trang-thai-bai-thi.enum';
 import { TrangThaiPhongThi } from '../../common/enums/trang-thai-phong-thi.enum';
 import { TrangThaiThanhVien } from '../../common/enums/trang-thai-thanh-vien.enum';
+import { daKetThuc } from '../../common/utils/hoc-ky.util';
 import { ExamSessionsService } from '../exam-sessions/exam-sessions.service';
 
 // Các bước chuyển trạng thái phòng thi hợp lệ
@@ -593,10 +594,19 @@ export class ExamRoomsService {
       );
   }
 
+  // Chỉ gọi khi tạo phòng: học kỳ đã kết thúc thì học sinh không vào thi được
+  // nữa nên không cho mở phòng mới (phòng cũ vẫn giữ nguyên để xem lịch sử).
   private async kiemTraMonHocHocKy(maMonHocHocKy: number) {
-    const mhhk = await this.mhhkRepo.findOne({ where: { maMonHocHocKy } });
+    const mhhk = await this.mhhkRepo.findOne({
+      where: { maMonHocHocKy },
+      relations: { hocKy: true },
+    });
     if (!mhhk)
       throw new BadRequestException('Môn học của học kỳ không tồn tại');
+    if (mhhk.hocKy && daKetThuc(mhhk.hocKy))
+      throw new BadRequestException(
+        'Học kỳ đã kết thúc, không thể mở phòng thi cho môn học này',
+      );
   }
 
   // Mọi đề phải tồn tại, đã công khai và thuộc đúng môn-học-kỳ của phòng.
